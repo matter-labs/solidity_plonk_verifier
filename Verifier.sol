@@ -903,6 +903,19 @@ contract Plonk4Verifier {
             emit DebugBytes32(bytes32(uint256(1)));
         }
     }
+
+    // This verifier is for a PLONK with a state width 4
+    // and main gate equation
+    // q_a(X) * a(X) + 
+    // q_b(X) * b(X) + 
+    // q_c(X) * c(X) + 
+    // q_d(X) * d(X) + 
+    // q_m(X) * a(X) * b(X) + 
+    // q_constants(X)+ 
+    // q_d_next(X) * d(X*omega)
+    // where q_{}(X) are selectors a, b, c, d - state (witness) polynomials
+    // q_d_next(X) "peeks" into the next row of the trace, so it takes 
+    // the same d(X) polynomial, but shifted
     
     // NB: We do not yet provide a deserialization function for a proof
     // (it will take just be uin256[N]) cause format is not yet solid,
