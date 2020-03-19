@@ -338,57 +338,57 @@ contract Plonk4Verifier {
     uint256 constant state_width = 4;
     
     function get_verification_key() internal pure returns(VerificationKey memory vk) {
-        vk.domain_size = 8;
+        vk.domain_size = 4194304;
         vk.num_inputs = 1;
-        vk.omega = Pairings.newFr(0x2b337de1c8c14f22ec9b9e2f96afef3652627366f8170a0a948dad4ac1bd5e80);
+        vk.omega = Pairings.newFr(0x18c95f1ae6514e11a1b30fd7923947c5ffcec5347f16e91b4dd654168326bede);
         vk.selector_commitments = new Pairings.G1Point[](state_width+2);
         vk.selector_commitments[0] = Pairings.newG1(
-            0x221f0a4724496eef2d6f4a3feb4ffc0208de7bfdb737ea8e2b835e0616d061d2,
-            0x11c939ddcd22087b6fd59d799e15924573b8a815a789d237414b8430fcf69974
+            0x2f702f46a651a9b388b5a908babecccc48e59306c80a75c2855ffe53ce1b60e7,
+            0x278012543c718d110a97a29cf286c52330f9b780a57043cec08f36895309e4f1
         );
         vk.selector_commitments[1] = Pairings.newG1(
-            0x1a491b60cdae811dc03c00655a64073cf536115324b340895c6db7e387eea681,
-            0x06e63b071abae5ad0dc281f103e234f34535d795699dcc6a895d5964422a5952
+            0x305a8728721fad81716a0696f9afcde4f73211c108078a8b83f531d56456f7b1,
+            0x05a1a823893642cf71ca251eaa7f9d7f1fe70ff2399b9ad84aa5a6e7b9419a4f
         );
         vk.selector_commitments[2] = Pairings.newG1(
-            0x1a491b60cdae811dc03c00655a64073cf536115324b340895c6db7e387eea681,
-            0x297e136bc676ba7caa8dc3c57d9f236a524b92fbfed3fe22b2c332b29652a3f5
+            0x178ddfc4b5846bda8dcdc8a17bae74dbbc592a983de5b3b697e11b253f8a163b,
+            0x2557ec9521f6e4ad15ef940cf76632a3cd4acc43c1534806804ee82b2ada918e
         );
         vk.selector_commitments[3] = Pairings.newG1(
-            0x1a491b60cdae811dc03c00655a64073cf536115324b340895c6db7e387eea681,
-            0x297e136bc676ba7caa8dc3c57d9f236a524b92fbfed3fe22b2c332b29652a3f5
+            0x2892b4b8f0c46568d4c561e5b8b8566bd4377fdb12633f7f3c3f92cac610f896,
+            0x2156898a3fa6eac08492441a9bb4a5a2db37aa392a10f034ae32bdfd2a17db45
         );
         vk.selector_commitments[4] = Pairings.newG1(
-            0x1e52d5ac827d81147c8e884f7b220e2779c7a8cd67df5ff5857995ebaa622597,
-            0x2b9fc3b60b69dee94225aef2b92a5bc716b180d76ab61cb8f37b04336f281022
+            0x11e132a7906d00e1e391b60c35dbcbf41f2dca61ba4e0c863d3bcd3c9cd34c4a,
+            0x12e44baa9d800e085a5c6c5cae1f3e5b043327d8a12388c8c525ca942c0eef86
         );
         vk.selector_commitments[5] = Pairings.newG1(
-            0x0000000000000000000000000000000000000000000000000000000000000000,
-            0x0000000000000000000000000000000000000000000000000000000000000000
+            0x19c2f274c90b4fd99f74966980bdf7230437dc53fde5e3a1be30242566ff4db7,
+            0x00e4105b033a7b6e2d1628a7949d9f14fb66421706cae56bef2c69b9d49f98c9
         );
         
         vk.next_step_selector_commitments = new Pairings.G1Point[](1);
         vk.next_step_selector_commitments[0] = Pairings.newG1(
-            0x0000000000000000000000000000000000000000000000000000000000000000,
-            0x0000000000000000000000000000000000000000000000000000000000000000
+            0x0676db98c4418f1a4f659a76e16b04a7c297df55250824a64952aaa0093070a0,
+            0x1eb4f65fa2a9992c2465ceb19f42b030ce21b8fe006ace9b1262091c3e5d7c11
         );
         
         vk.permutation_commitments = new Pairings.G1Point[](state_width);
          vk.permutation_commitments[0] = Pairings.newG1(
-            0x055fac5e3320cc7dad48dd687d545df9ab5eaf2a5790798acf87aef48579f7ad,
-            0x1f555da7f16224290045aa71e459f34cb9eabbc4155fb68d6ebdab0af235dfdc
+            0x2f4479997d6eca5143a476d491fecaeacec4b1422087ec8428e97e8127bdde19,
+            0x07eb7a6bd6954fcb75e65304b75bcd732003caec057f444308b02d20802d291c
         );
         vk.permutation_commitments[1] = Pairings.newG1(
-            0x0177ec222fce18b70e2e6f9c649612d73e6af69f24e8151b9cab607f37316084,
-            0x09d229cd3e9673a712806899bd09d65e7906dfd92b147bb656ab4bd713b8a8c8
+            0x1629c2389d1008a4c2f806c5a853a003f7b7a7c45fcb869cc87c20d94a90bf3e,
+            0x05ac17be842eb49f69711cb722a289f0c3cacb807e01cb17795bdefc92c5a99f
         );
         vk.permutation_commitments[2] = Pairings.newG1(
-            0x27c39bc902603bddf02576de7bfe7211889467877fa7b5611c495a0e462dc012,
-            0x093501f69f0617158db4f72c4f1183e284d2c1d92099add2713d48fc851bb698
+            0x28afc12a8b5ff08374e6ef6494b09161ac089c06a161983ac621f1ed4d923b54,
+            0x04da5a500aa46e058f2d64c62c713382c6c991b0009106b15e0ffec20f9c58a9
         );
         vk.permutation_commitments[3] = Pairings.newG1(
-            0x19c5d1b7df1125f24646c8e7ac90689c6cd593703e7cd4d7918e3d7c9c2f220a,
-            0x0daf49f7dfa3f8d741df0efcef1f171c961b47f8b28d46a2af00be85c8b6e713
+            0x264adcb54404f3b255ad81b481edd4193f80decaa1b6fea28bbf5f29c36b1cc1,
+            0x059b0a160706cda2cbc8e6a0d62d924e33a8a22aa8be8c66f70e1d0dbb88c470
         );
         
         vk.permutation_non_residues = new Pairings.Fr[](state_width-1);
@@ -396,17 +396,17 @@ contract Plonk4Verifier {
             0x0000000000000000000000000000000000000000000000000000000000000005
         );
         vk.permutation_non_residues[1] = Pairings.newFr(
-            0x0000000000000000000000000000000000000000000000000000000000000005
+            0x0000000000000000000000000000000000000000000000000000000000000007
         );
         vk.permutation_non_residues[2] = Pairings.newFr(
-            0x0000000000000000000000000000000000000000000000000000000000000005
+            0x000000000000000000000000000000000000000000000000000000000000000a
         );
         
         vk.g2_x = Pairings.newG2(
-            [0x12740934ba9615b77b6a49b06fcce83ce90d67b1d0e2a530069e3a7306569a91,
-             0x116da8c89a0d090f3d8644ada33a5f1c8013ba7204aeca62d66d931b99afe6e7],
-            [0x25222d9816e5f86b4a7dedd00d04acc5c979c18bd22b834ea8c6d07c0ba441db,
-             0x076441042e77b6309644b56251f059cf14befc72ac8a6157d30924e58dc4c172]
+            [0x260e01b251f6f1c7e7ff4e580791dee8ea51d87a358e038b4efe30fac09383c1,
+             0x0118c4d5b837bcc2bc89b5b398b5974e9f5944073b32078b7e231fec938883b0],
+            [0x04fc6369f7110fe3d25156c1bb9a72859cf2a04641f99ba4ee413c80da6a5fe4,
+             0x22febda3c0c0632a56475b4214e5615e11e6dd3f96e6cea2854a87d4dacc5e55]
         );
     }
     
@@ -640,7 +640,7 @@ contract Plonk4Verifier {
         VerificationKey memory vk
     ) internal view returns (Pairings.G1Point memory res) {
         uint256 state_w = state_width;
-        uint256 power_for_z_omega_opening = 1 + 1 + state_width + state_width - 1;
+        uint256 power_for_z_omega_opening = 1 + 1 + state_w + state_w - 1;
         res = Pairings.copyG1(vk.selector_commitments[state_w + 1]);
                 
         Pairings.G1Point memory tmp_g1 = Pairings.P1();
@@ -896,6 +896,100 @@ contract Plonk4Verifier {
         
         return valid;
     }
+
+    function deserialize_proof(uint256 expected_inputs, uint256[] memory public_inputs, uint256[] memory serialized_proof) internal pure returns(Proof memory proof) {
+        assert(expected_inputs == public_inputs.length);
+        proof.input_values = new uint256[](expected_inputs);
+        for (uint256 i = 0; i < expected_inputs; i++) {
+            proof.input_values[i] = public_inputs[i];
+        }
+ 
+        uint256 j = 0;
+        proof.wire_commitments = new Pairings.G1Point[](state_width);
+        for (uint256 i = 0; i < state_width; i++) {
+            proof.wire_commitments[i] = Pairings.newG1(
+                serialized_proof[j],
+                serialized_proof[j+1]
+            );
+
+            j += 2;
+        }
+        
+        proof.grand_product_commitment = Pairings.newG1(
+                serialized_proof[j],
+                serialized_proof[j+1]
+        );
+        j += 2;
+        
+        proof.quotient_poly_commitments = new Pairings.G1Point[](state_width);
+        for (uint256 i = 0; i < state_width; i++) {
+            proof.quotient_poly_commitments[i] = Pairings.newG1(
+                serialized_proof[j],
+                serialized_proof[j+1]
+            );
+
+            j += 2;
+        }
+        
+        proof.wire_values_at_z = new Pairings.Fr[](state_width);
+        for (uint256 i = 0; i < state_width; i++) {
+            proof.wire_values_at_z[i] = Pairings.newFr(
+                serialized_proof[j]
+            );
+
+            j += 1;
+        }
+        
+        proof.wire_values_at_z_omega = new Pairings.Fr[](1);
+        for (uint256 i = 0; i < proof.wire_values_at_z_omega.length; i++) {
+            proof.wire_values_at_z_omega[i] = Pairings.newFr(
+                serialized_proof[j]
+            );
+
+            j += 1;
+        }
+        
+        proof.grand_product_at_z_omega = Pairings.newFr(
+                serialized_proof[j]
+            );
+
+        j += 1;
+
+        proof.quotient_polynomial_at_z = Pairings.newFr(
+            serialized_proof[j]
+        );
+
+        j += 1;
+
+        proof.linearization_polynomial_at_z = Pairings.newFr(
+            serialized_proof[j]
+        );
+
+        j += 1;
+    
+        proof.permutation_polynomials_at_z = new Pairings.Fr[](state_width - 1);
+        for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
+            proof.permutation_polynomials_at_z[i] = Pairings.newFr(
+                serialized_proof[j]
+            );
+
+            j += 1;
+        }
+
+        proof.opening_at_z_proof = Pairings.newG1(
+                serialized_proof[j],
+                serialized_proof[j+1]
+        );
+        j += 2;
+
+        proof.opening_at_z_omega_proof = Pairings.newG1(
+                serialized_proof[j],
+                serialized_proof[j+1]
+        );
+    
+        j += 2;
+        assert(j == serialized_proof.length);
+    }
     
     function test() public returns (bool) {
         bool valid = verify(get_dummy_proof(), get_verification_key());
@@ -904,6 +998,20 @@ contract Plonk4Verifier {
         } else {
             emit DebugBytes32(bytes32(uint256(1)));
         }
+    }
+
+    function verity(
+        uint256[] memory public_inputs, 
+        uint256[] memory serialized_proof
+    ) public view returns (bool) {
+        VerificationKey memory vk = get_verification_key();
+        uint256 expected_inputs = vk.num_inputs;
+
+        Proof memory proof = deserialize_proof(expected_inputs, public_inputs, serialized_proof);
+
+        bool valid = verify(proof, vk);
+
+        return valid;
     }
 
     // This verifier is for a PLONK with a state width 4
@@ -917,13 +1025,5 @@ contract Plonk4Verifier {
     // q_d_next(X) * d(X*omega)
     // where q_{}(X) are selectors a, b, c, d - state (witness) polynomials
     // q_d_next(X) "peeks" into the next row of the trace, so it takes 
-    // the same d(X) polynomial, but shifted
-    
-    // NB: We do not yet provide a deserialization function for a proof
-    // (it will take just be uin256[N]) cause format is not yet solid,
-    // but we can make a note that Ethereum BN254 precompile does not accept
-    // invalid points encoding, so proof will contain valid points encoding.
-    // For elements of the scalar field we check for a range in newFr function
-    // that requires that uint256 representation is less than the modulus
-    
+    // the same d(X) polynomial, but shifted    
 }
