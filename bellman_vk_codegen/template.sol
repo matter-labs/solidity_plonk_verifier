@@ -311,6 +311,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr memory omega_power = omega.pow(poly_num);
         res = at.pow(domain_size);
         res.sub_assign(one);
+        assert(res.value != 0); // Vanishing polynomial can not be zero at point `at`
         res.mul_assign(omega_power);
         
         PairingsBn254.Fr memory den = PairingsBn254.copy(at);
@@ -331,15 +332,17 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr memory one = PairingsBn254.newFr(1);
         PairingsBn254.Fr memory tmp_1 = PairingsBn254.newFr(0);
         PairingsBn254.Fr memory tmp_2 = PairingsBn254.newFr(domain_size);
-        PairingsBn254.Fr memory power_of_z = at.pow(domain_size);
+        PairingsBn254.Fr memory vanishing_at_z = at.pow(domain_size);
+        vanishing_at_z.sub_assign(one);
+        // we can not have random point z be in domain
+        assert(vanishing_at_z.value != 0);
         PairingsBn254.Fr[] memory nums = new PairingsBn254.Fr[](poly_nums.length);
         PairingsBn254.Fr[] memory dens = new PairingsBn254.Fr[](poly_nums.length);
         // numerators in a form omega^i * (z^n - 1)
         // denoms in a form (z - omega^i) * N
         for (uint i = 0; i < poly_nums.length; i++) {
             tmp_1 = omega.pow(poly_nums[i]); // power of omega
-            nums[i].assign(power_of_z);
-            nums[i].sub_assign(one);
+            nums[i].assign(vanishing_at_z);
             nums[i].mul_assign(tmp_1);
             
             dens[i].assign(at); // (X - omega^i) * N
@@ -385,6 +388,7 @@ contract Plonk4VerifierWithAccessToDNext {
         VerificationKey memory vk
     ) internal view returns (bool) {
         PairingsBn254.Fr memory lhs = evaluate_vanishing(vk.domain_size, state.z);
+        assert(lhs.value != 0); // we can not check a polynomial relationship if point `z` is in the domain
         lhs.mul_assign(proof.quotient_polynomial_at_z);
     
         PairingsBn254.Fr memory quotient_challenge = PairingsBn254.newFr(1);
