@@ -54,7 +54,7 @@ dependencies = [
 [[package]]
 name = "bellman_ce"
 version = "0.3.1"
-source = "git+https://github.com/matter-labs/bellman?branch=plonk_release#6312b315f426d515e7b7edd9e48e02b5f8321fea"
+source = "git+https://github.com/matter-labs/bellman?branch=plonk_release#b6df3ab8e585b6a28075eef1c048d6c8930c3fc9"
 dependencies = [
  "bit-vec",
  "blake2s_const",
@@ -98,7 +98,7 @@ checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 [[package]]
 name = "blake2s_const"
 version = "0.6.0"
-source = "git+https://github.com/matter-labs/bellman?branch=plonk_release#6312b315f426d515e7b7edd9e48e02b5f8321fea"
+source = "git+https://github.com/matter-labs/bellman?branch=plonk_release#b6df3ab8e585b6a28075eef1c048d6c8930c3fc9"
 dependencies = [
  "arrayref",
  "arrayvec 0.5.1",
@@ -348,7 +348,7 @@ dependencies = [
  "num-traits",
  "proc-macro2 1.0.9",
  "quote 1.0.3",
- "syn 1.0.16",
+ "syn 1.0.17",
 ]
 
 [[package]]
@@ -687,7 +687,7 @@ dependencies = [
  "pest_meta",
  "proc-macro2 1.0.9",
  "quote 1.0.3",
- "syn 1.0.16",
+ "syn 1.0.17",
 ]
 
 [[package]]
@@ -989,7 +989,7 @@ checksum = "ac5d00fc561ba2724df6758a17de23df5914f20e41cb00f94d5b7ae42fffaff8"
 dependencies = [
  "proc-macro2 1.0.9",
  "quote 1.0.3",
- "syn 1.0.16",
+ "syn 1.0.17",
 ]
 
 [[package]]
@@ -1055,9 +1055,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.16"
+version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "123bd9499cfb380418d509322d7a6d52e5315f064fe4b3ad18a53d6b92c07859"
+checksum = "0df0eb663f387145cab623dea85b09c2c5b4b0aef44e945d928e682fce71bb03"
 dependencies = [
  "proc-macro2 1.0.9",
  "quote 1.0.3",

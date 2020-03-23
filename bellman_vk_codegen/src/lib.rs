@@ -10,9 +10,7 @@ use serde_json::value::{Map};
 
 use web3::types::U256;
 
-// static template: &'static str = include_str!("./template.sol");
-
-pub fn render_verification_key(vk: &VerificationKey<Bn256, PlonkCsWidth4WithNextStepParams>) {
+pub fn render_verification_key(vk: &VerificationKey<Bn256, PlonkCsWidth4WithNextStepParams>, render_to_path: &str) {
     let mut map = Map::new();
 
     let domain_size = vk.n.next_power_of_two().to_string();
@@ -71,7 +69,7 @@ pub fn render_verification_key(vk: &VerificationKey<Bn256, PlonkCsWidth4WithNext
     // println!("{}", handlebars.render("contract", &map).unwrap());
 
     let mut writer = std::io::BufWriter::with_capacity(1<<24,
-        std::fs::File::create("./verifier.sol").unwrap()
+        std::fs::File::create(render_to_path).unwrap()
     );
 
     let rendered = handlebars.render("contract", &map).unwrap();
@@ -193,11 +191,41 @@ pub fn serialize_proof(proof: &Proof<Bn256, PlonkCsWidth4WithNextStepParams>) ->
 mod tests {
     use super::*;
     #[test]
-    fn it_works() {
+    fn render_key() {
         let mut reader = std::io::BufReader::with_capacity(1<<24,
             std::fs::File::open("./deposit_vk.key").unwrap()
         );
         let vk = VerificationKey::<Bn256, PlonkCsWidth4WithNextStepParams>::read(&mut reader).unwrap();
-        render_verification_key(&vk);
+        render_verification_key(&vk, "./verifier.sol");
+    }
+
+    #[test]
+    fn render_simple_xor_key_and_proof() {
+        let mut reader = std::io::BufReader::with_capacity(1<<24,
+            std::fs::File::open("./xor_vk.key").unwrap()
+        );
+        let vk = VerificationKey::<Bn256, PlonkCsWidth4WithNextStepParams>::read(&mut reader).unwrap();
+        render_verification_key(&vk, "./xor.sol");
+
+        let mut reader = std::io::BufReader::with_capacity(1<<24,
+            std::fs::File::open("./xor_proof.proof").unwrap()
+        );
+        let proof = Proof::<Bn256, PlonkCsWidth4WithNextStepParams>::read(&mut reader).unwrap();
+        let (inputs, proof) = serialize_proof(&proof);
+
+        println!("Inputs");
+        let mut vec = vec![];
+        for i in inputs.into_iter() {
+            vec.push(format!("\"{}\"", i));
+        }
+        println!("[{}]", vec.join(","));
+
+        println!("Proof");
+        let mut vec = vec![];
+        for i in proof.into_iter() {
+            vec.push(format!("\"{}\"", i));
+        }
+
+        println!("[{}]", vec.join(","));
     }
 }

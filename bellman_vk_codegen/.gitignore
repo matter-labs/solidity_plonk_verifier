@@ -1,2 +1,5 @@
 target
 verifier.sol
+xor.sol
+*.key
+*.proof
