@@ -13,7 +13,7 @@ library PairingsBn254 {
         uint256 value;
     }
     
-    function newFr(uint256 fr) internal pure returns (Fr memory) {
+    function new_fr(uint256 fr) internal pure returns (Fr memory) {
         require(fr < r_mod);
         return Fr({value: fr});
     }
@@ -64,15 +64,15 @@ library PairingsBn254 {
         return G1Point(1, 2);
     }
     
-    function newG1(uint256 x, uint256 y) internal pure returns (G1Point memory) {
+    function new_g1(uint256 x, uint256 y) internal pure returns (G1Point memory) {
         return G1Point(x, y);
     }
     
-    function newG2(uint256[2] memory x, uint256[2] memory y) internal pure returns (G2Point memory) {
+    function new_g2(uint256[2] memory x, uint256[2] memory y) internal pure returns (G2Point memory) {
         return G2Point(x, y);
     }
     
-    function copyG1(G1Point memory self) internal pure returns (G1Point memory result) {
+    function copy_g1(G1Point memory self) internal pure returns (G1Point memory result) {
         result.X = self.X;
         result.Y = self.Y;
     }
@@ -95,31 +95,30 @@ library PairingsBn254 {
         self.Y = q_mod - self.Y;
     }
     
-    function is_infinity(G1Point memory p) internal pure returns (bool) {
-        if (p.X == 0 && p.Y == 0) {
-            return true;
-        }
-        return false;
-    }
+    // function is_infinity(G1Point memory p) internal pure returns (bool) {
+    //     if (p.X == 0 && p.Y == 0) {
+    //         return true;
+    //     }
+    //     return false;
+    // }
 
-    function pointAdd(G1Point memory p1, G1Point memory p2)
+    function point_add(G1Point memory p1, G1Point memory p2)
         internal view returns (G1Point memory r)
     {
-        uint256[4] memory input;
-        input[0] = p1.X;
-        input[1] = p1.Y;
-        input[2] = p2.X;
-        input[3] = p2.Y;
-        bool success = false;
-        assembly {
-            success := staticcall(gas(), 6, input, 0x80, r, 0x40)
-        }
-        require(success);
+        point_add_into_dest(p1, p2, r);
+        return r;
     }
     
     function point_add_assign(G1Point memory p1, G1Point memory p2)
         internal view
     {
+        point_add_into_dest(p1, p2, p1);
+    }
+
+    function point_add_into_dest(G1Point memory p1, G1Point memory p2, G1Point memory dest)
+        internal view
+    {
+
         uint256[4] memory input;
         input[0] = p1.X;
         input[1] = p1.Y;
@@ -127,7 +126,7 @@ library PairingsBn254 {
         input[3] = p2.Y;
         bool success = false;
         assembly {
-            success := staticcall(gas(), 6, input, 0x80, p1, 0x40)
+            success := staticcall(gas(), 6, input, 0x80, dest, 0x40)
         }
         require(success);
     }
@@ -135,12 +134,20 @@ library PairingsBn254 {
     function point_sub_assign(G1Point memory p1, G1Point memory p2)
         internal view
     {
+        point_sub_into_dest(p1, p2, p1);
+    }
+
+    function point_sub_into_dest(G1Point memory p1, G1Point memory p2, G1Point memory dest)
+        internal view
+    {
         uint256[4] memory input;
-        if (p1.X == 0 && p1.Y == 0) {
-            p1.X = p2.X;
-            p1.Y = q_mod - p2.Y;
+        if (p2.X == 0 && p2.Y == 0) {
+            dest.X = p1.X;
+            dest.Y = p1.Y;
             return;
-        } else if (p2.X == 0 && p2.Y == 0) {
+        } else if (p1.X == 0 && p1.Y == 0) {
+            dest.X = p2.X;
+            dest.Y = q_mod - p2.Y;
             return;
         } else {
             input[0] = p1.X;
@@ -150,27 +157,26 @@ library PairingsBn254 {
         }
         bool success = false;
         assembly {
-            success := staticcall(gas(), 6, input, 0x80, p1, 0x40)
+            success := staticcall(gas(), 6, input, 0x80, dest, 0x40)
         }
         require(success);
     }
 
 
-    function pointMul(G1Point memory p, Fr memory s)
+    function point_mul(G1Point memory p, Fr memory s)
         internal view returns (G1Point memory r)
     {
-        uint[3] memory input;
-        input[0] = p.X;
-        input[1] = p.Y;
-        input[2] = s.value;
-        bool success;
-        assembly {
-            success := staticcall(gas(), 7, input, 0x60, r, 0x40)
-        }
-        require(success);
+        point_mul_into_dest(p, s, r);
+        return r;
     }
     
     function point_mul_assign(G1Point memory p, Fr memory s)
+        internal view
+    {
+        point_mul_into_dest(p, s, p);
+    }
+
+    function point_mul_into_dest(G1Point memory p, Fr memory s, G1Point memory dest)
         internal view
     {
         uint[3] memory input;
@@ -179,7 +185,7 @@ library PairingsBn254 {
         input[2] = s.value;
         bool success;
         assembly {
-            success := staticcall(gas(), 7, input, 0x60, p, 0x40)
+            success := staticcall(gas(), 7, input, 0x60, dest, 0x40)
         }
         require(success);
     }
@@ -244,8 +250,9 @@ library TranscriptLibrary {
     }
 
     function update_with_u256(Transcript memory self, uint256 value) internal pure {
-        self.state_0 = keccak256(abi.encodePacked(DST_0, self.state_0, value));
-        self.state_1 = keccak256(abi.encodePacked(DST_1, self.state_1, value));
+        bytes32 old_state_0 = self.state_0;
+        self.state_0 = keccak256(abi.encodePacked(DST_0, old_state_0, self.state_1, value));
+        self.state_1 = keccak256(abi.encodePacked(DST_1, old_state_0, self.state_1, value));
     }
     
     function update_with_fr(Transcript memory self, PairingsBn254.Fr memory value) internal pure {
@@ -317,7 +324,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr memory at
     ) internal view returns (PairingsBn254.Fr memory res) {
         require(poly_num < domain_size);
-        PairingsBn254.Fr memory one = PairingsBn254.newFr(1);
+        PairingsBn254.Fr memory one = PairingsBn254.new_fr(1);
         PairingsBn254.Fr memory omega_power = omega.pow(poly_num);
         res = at.pow(domain_size);
         res.sub_assign(one);
@@ -326,7 +333,7 @@ contract Plonk4VerifierWithAccessToDNext {
         
         PairingsBn254.Fr memory den = PairingsBn254.copy(at);
         den.sub_assign(omega_power);
-        den.mul_assign(PairingsBn254.newFr(domain_size));
+        den.mul_assign(PairingsBn254.new_fr(domain_size));
         
         den = den.inverse();
         
@@ -339,9 +346,9 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr memory omega, 
         PairingsBn254.Fr memory at
     ) internal view returns (PairingsBn254.Fr[] memory res) {
-        PairingsBn254.Fr memory one = PairingsBn254.newFr(1);
-        PairingsBn254.Fr memory tmp_1 = PairingsBn254.newFr(0);
-        PairingsBn254.Fr memory tmp_2 = PairingsBn254.newFr(domain_size);
+        PairingsBn254.Fr memory one = PairingsBn254.new_fr(1);
+        PairingsBn254.Fr memory tmp_1 = PairingsBn254.new_fr(0);
+        PairingsBn254.Fr memory tmp_2 = PairingsBn254.new_fr(domain_size);
         PairingsBn254.Fr memory vanishing_at_z = at.pow(domain_size);
         vanishing_at_z.sub_assign(one);
         // we can not have random point z be in domain
@@ -361,7 +368,7 @@ contract Plonk4VerifierWithAccessToDNext {
         }
         
         PairingsBn254.Fr[] memory partial_products = new PairingsBn254.Fr[](poly_nums.length);
-        partial_products[0].assign(PairingsBn254.newFr(1));
+        partial_products[0].assign(PairingsBn254.new_fr(1));
         for (uint i = 1; i < dens.length - 1; i++) {
             partial_products[i].assign(dens[i-1]);
             partial_products[i].mul_assign(dens[i]);
@@ -389,7 +396,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr memory at
     ) internal view returns (PairingsBn254.Fr memory res) {
         res = at.pow(domain_size);
-        res.sub_assign(PairingsBn254.newFr(1));
+        res.sub_assign(PairingsBn254.new_fr(1));
     }
     
     function verify_at_z(
@@ -401,14 +408,14 @@ contract Plonk4VerifierWithAccessToDNext {
         assert(lhs.value != 0); // we can not check a polynomial relationship if point `z` is in the domain
         lhs.mul_assign(proof.quotient_polynomial_at_z);
     
-        PairingsBn254.Fr memory quotient_challenge = PairingsBn254.newFr(1);
+        PairingsBn254.Fr memory quotient_challenge = PairingsBn254.new_fr(1);
         PairingsBn254.Fr memory rhs = PairingsBn254.copy(proof.linearization_polynomial_at_z);
         
         // public inputs
-        PairingsBn254.Fr memory tmp = PairingsBn254.newFr(0);
+        PairingsBn254.Fr memory tmp = PairingsBn254.new_fr(0);
         for (uint256 i = 0; i < proof.input_values.length; i++) {
             tmp.assign(state.cached_lagrange_evals[i]);
-            tmp.mul_assign(PairingsBn254.newFr(proof.input_values[i]));
+            tmp.mul_assign(PairingsBn254.new_fr(proof.input_values[i]));
             rhs.add_assign(tmp);
         }
         
@@ -464,25 +471,25 @@ contract Plonk4VerifierWithAccessToDNext {
         //
         // we pay a little for a few arithmetic operations to not introduce another constant
         uint256 power_for_z_omega_opening = 1 + 1 + STATE_WIDTH + STATE_WIDTH - 1;
-        res = PairingsBn254.copyG1(vk.selector_commitments[STATE_WIDTH + 1]);
+        res = PairingsBn254.copy_g1(vk.selector_commitments[STATE_WIDTH + 1]);
                 
         PairingsBn254.G1Point memory tmp_g1 = PairingsBn254.P1();
-        PairingsBn254.Fr memory tmp_fr = PairingsBn254.newFr(0);
+        PairingsBn254.Fr memory tmp_fr = PairingsBn254.new_fr(0);
         
         // addition gates
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
-            tmp_g1 = vk.selector_commitments[i].pointMul(proof.wire_values_at_z[i]);
+            tmp_g1 = vk.selector_commitments[i].point_mul(proof.wire_values_at_z[i]);
             res.point_add_assign(tmp_g1);
         }
         
         // multiplication gate
         tmp_fr.assign(proof.wire_values_at_z[0]);
         tmp_fr.mul_assign(proof.wire_values_at_z[1]);
-        tmp_g1 = vk.selector_commitments[STATE_WIDTH].pointMul(tmp_fr);
+        tmp_g1 = vk.selector_commitments[STATE_WIDTH].point_mul(tmp_fr);
         res.point_add_assign(tmp_g1);
         
         // d_next
-        tmp_g1 = vk.next_step_selector_commitments[0].pointMul(proof.wire_values_at_z_omega[0]);
+        tmp_g1 = vk.next_step_selector_commitments[0].point_mul(proof.wire_values_at_z_omega[0]);
         res.point_add_assign(tmp_g1);
         
         // z * non_res * beta + gamma + a
@@ -511,7 +518,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr memory grand_product_part_at_z_omega = state.v.pow(power_for_z_omega_opening);
         grand_product_part_at_z_omega.mul_assign(state.u);
         
-        PairingsBn254.Fr memory last_permutation_part_at_z = PairingsBn254.newFr(1);
+        PairingsBn254.Fr memory last_permutation_part_at_z = PairingsBn254.new_fr(1);
         for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
             tmp_fr.assign(state.beta);
             tmp_fr.mul_assign(proof.permutation_polynomials_at_z[i]);
@@ -526,13 +533,13 @@ contract Plonk4VerifierWithAccessToDNext {
         last_permutation_part_at_z.mul_assign(state.alpha);
         
         // add to the linearization
-        tmp_g1 = proof.grand_product_commitment.pointMul(grand_product_part_at_z);
-        tmp_g1.point_sub_assign(vk.permutation_commitments[STATE_WIDTH - 1].pointMul(last_permutation_part_at_z));
+        tmp_g1 = proof.grand_product_commitment.point_mul(grand_product_part_at_z);
+        tmp_g1.point_sub_assign(vk.permutation_commitments[STATE_WIDTH - 1].point_mul(last_permutation_part_at_z));
 
         res.point_add_assign(tmp_g1);
         res.point_mul_assign(state.v);
         
-        res.point_add_assign(proof.grand_product_commitment.pointMul(grand_product_part_at_z_omega));
+        res.point_add_assign(proof.grand_product_commitment.point_mul(grand_product_part_at_z_omega));
     }
     
     function verify_commitments(
@@ -546,13 +553,13 @@ contract Plonk4VerifierWithAccessToDNext {
         
         PairingsBn254.G1Point memory tmp_g1 = PairingsBn254.P1();
 
-        PairingsBn254.Fr memory aggregation_challenge = PairingsBn254.newFr(1);
+        PairingsBn254.Fr memory aggregation_challenge = PairingsBn254.new_fr(1);
         
-        PairingsBn254.G1Point memory commitment_aggregation = PairingsBn254.copyG1(proof.quotient_poly_commitments[0]);
-        PairingsBn254.Fr memory tmp_fr = PairingsBn254.newFr(1);
+        PairingsBn254.G1Point memory commitment_aggregation = PairingsBn254.copy_g1(proof.quotient_poly_commitments[0]);
+        PairingsBn254.Fr memory tmp_fr = PairingsBn254.new_fr(1);
         for (uint i = 1; i < proof.quotient_poly_commitments.length; i++) {
             tmp_fr.mul_assign(z_in_domain_size);
-            tmp_g1 = proof.quotient_poly_commitments[i].pointMul(tmp_fr);
+            tmp_g1 = proof.quotient_poly_commitments[i].point_mul(tmp_fr);
             commitment_aggregation.point_add_assign(tmp_g1);
         }
 
@@ -561,13 +568,13 @@ contract Plonk4VerifierWithAccessToDNext {
         
         for (uint i = 0; i < proof.wire_commitments.length; i++) {
             aggregation_challenge.mul_assign(state.v);
-            tmp_g1 = proof.wire_commitments[i].pointMul(aggregation_challenge);
+            tmp_g1 = proof.wire_commitments[i].point_mul(aggregation_challenge);
             commitment_aggregation.point_add_assign(tmp_g1);
         }
         
         for (uint i = 0; i < vk.permutation_commitments.length - 1; i++) {
             aggregation_challenge.mul_assign(state.v);
-            tmp_g1 = vk.permutation_commitments[i].pointMul(aggregation_challenge);
+            tmp_g1 = vk.permutation_commitments[i].point_mul(aggregation_challenge);
             commitment_aggregation.point_add_assign(tmp_g1);
         }
         
@@ -577,11 +584,11 @@ contract Plonk4VerifierWithAccessToDNext {
 
         tmp_fr.assign(aggregation_challenge);
         tmp_fr.mul_assign(state.u);
-        tmp_g1 = proof.wire_commitments[STATE_WIDTH - 1].pointMul(tmp_fr);
+        tmp_g1 = proof.wire_commitments[STATE_WIDTH - 1].point_mul(tmp_fr);
         commitment_aggregation.point_add_assign(tmp_g1);
         
         // collect opening values
-        aggregation_challenge = PairingsBn254.newFr(1);
+        aggregation_challenge = PairingsBn254.new_fr(1);
         
         PairingsBn254.Fr memory aggregated_value = PairingsBn254.copy(proof.quotient_polynomial_at_z);
         
@@ -621,17 +628,17 @@ contract Plonk4VerifierWithAccessToDNext {
         tmp_fr.mul_assign(state.u);
         aggregated_value.add_assign(tmp_fr);
         
-        commitment_aggregation.point_sub_assign(PairingsBn254.P1().pointMul(aggregated_value));
+        commitment_aggregation.point_sub_assign(PairingsBn254.P1().point_mul(aggregated_value));
         
         PairingsBn254.G1Point memory pair_with_generator = commitment_aggregation;
-        pair_with_generator.point_add_assign(proof.opening_at_z_proof.pointMul(state.z));
+        pair_with_generator.point_add_assign(proof.opening_at_z_proof.point_mul(state.z));
         
         tmp_fr.assign(state.z);
         tmp_fr.mul_assign(vk.omega);
         tmp_fr.mul_assign(state.u);
-        pair_with_generator.point_add_assign(proof.opening_at_z_omega_proof.pointMul(tmp_fr));
+        pair_with_generator.point_add_assign(proof.opening_at_z_omega_proof.point_mul(tmp_fr));
         
-        PairingsBn254.G1Point memory pair_with_x = proof.opening_at_z_omega_proof.pointMul(state.u);
+        PairingsBn254.G1Point memory pair_with_x = proof.opening_at_z_omega_proof.point_mul(state.u);
         pair_with_x.point_add_assign(proof.opening_at_z_proof);
         pair_with_x.negate();
         
@@ -738,29 +745,29 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
     function get_verification_key() internal pure returns(VerificationKey memory vk) {
         vk.domain_size = {{domain_size}};
         vk.num_inputs = {{num_inputs}};
-        vk.omega = PairingsBn254.newFr({{omega}});
+        vk.omega = PairingsBn254.new_fr({{omega}});
         vk.selector_commitments = new PairingsBn254.G1Point[](STATE_WIDTH+2);
-        vk.selector_commitments[0] = PairingsBn254.newG1(
+        vk.selector_commitments[0] = PairingsBn254.new_g1(
             {{selector_commitment_0_0}},
             {{selector_commitment_0_1}}
         );
-        vk.selector_commitments[1] = PairingsBn254.newG1(
+        vk.selector_commitments[1] = PairingsBn254.new_g1(
             {{selector_commitment_1_0}},
             {{selector_commitment_1_1}}
         );
-        vk.selector_commitments[2] = PairingsBn254.newG1(
+        vk.selector_commitments[2] = PairingsBn254.new_g1(
             {{selector_commitment_2_0}},
             {{selector_commitment_2_1}}
         );
-        vk.selector_commitments[3] = PairingsBn254.newG1(
+        vk.selector_commitments[3] = PairingsBn254.new_g1(
             {{selector_commitment_3_0}},
             {{selector_commitment_3_1}}
         );
-        vk.selector_commitments[4] = PairingsBn254.newG1(
+        vk.selector_commitments[4] = PairingsBn254.new_g1(
             {{selector_commitment_4_0}},
             {{selector_commitment_4_1}}
         );
-        vk.selector_commitments[5] = PairingsBn254.newG1(
+        vk.selector_commitments[5] = PairingsBn254.new_g1(
             {{selector_commitment_5_0}},
             {{selector_commitment_5_1}}
         );
@@ -769,41 +776,41 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         // trace step, so we only need one element here and deal with it in other places
         // by having this in mind
         vk.next_step_selector_commitments = new PairingsBn254.G1Point[](1);
-        vk.next_step_selector_commitments[0] = PairingsBn254.newG1(
+        vk.next_step_selector_commitments[0] = PairingsBn254.new_g1(
             {{next_step_selector_commitment_0_0}},
             {{next_step_selector_commitment_0_1}}
         );
         
         vk.permutation_commitments = new PairingsBn254.G1Point[](STATE_WIDTH);
-         vk.permutation_commitments[0] = PairingsBn254.newG1(
+         vk.permutation_commitments[0] = PairingsBn254.new_g1(
             {{permutation_commitment_0_0}},
             {{permutation_commitment_0_1}}
         );
-        vk.permutation_commitments[1] = PairingsBn254.newG1(
+        vk.permutation_commitments[1] = PairingsBn254.new_g1(
             {{permutation_commitment_1_0}},
             {{permutation_commitment_1_1}}
         );
-        vk.permutation_commitments[2] = PairingsBn254.newG1(
+        vk.permutation_commitments[2] = PairingsBn254.new_g1(
             {{permutation_commitment_2_0}},
             {{permutation_commitment_2_1}}
         );
-        vk.permutation_commitments[3] = PairingsBn254.newG1(
+        vk.permutation_commitments[3] = PairingsBn254.new_g1(
             {{permutation_commitment_3_0}},
             {{permutation_commitment_3_1}}
         );
         
         vk.permutation_non_residues = new PairingsBn254.Fr[](STATE_WIDTH-1);
-        vk.permutation_non_residues[0] = PairingsBn254.newFr(
+        vk.permutation_non_residues[0] = PairingsBn254.new_fr(
             {{permutation_non_residue_0}}
         );
-        vk.permutation_non_residues[1] = PairingsBn254.newFr(
+        vk.permutation_non_residues[1] = PairingsBn254.new_fr(
             {{permutation_non_residue_1}}
         );
-        vk.permutation_non_residues[2] = PairingsBn254.newFr(
+        vk.permutation_non_residues[2] = PairingsBn254.new_fr(
             {{permutation_non_residue_2}}
         );
         
-        vk.g2_x = PairingsBn254.newG2(
+        vk.g2_x = PairingsBn254.new_g2(
             [{{g2_x_x_c1}},
              {{g2_x_x_c0}}],
             [{{g2_x_y_c1}},
@@ -826,7 +833,7 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         uint256 j = 0;
         proof.wire_commitments = new PairingsBn254.G1Point[](STATE_WIDTH);
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
-            proof.wire_commitments[i] = PairingsBn254.newG1(
+            proof.wire_commitments[i] = PairingsBn254.new_g1(
                 serialized_proof[j],
                 serialized_proof[j+1]
             );
@@ -834,7 +841,7 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
             j += 2;
         }
         
-        proof.grand_product_commitment = PairingsBn254.newG1(
+        proof.grand_product_commitment = PairingsBn254.new_g1(
                 serialized_proof[j],
                 serialized_proof[j+1]
         );
@@ -842,7 +849,7 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         
         proof.quotient_poly_commitments = new PairingsBn254.G1Point[](STATE_WIDTH);
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
-            proof.quotient_poly_commitments[i] = PairingsBn254.newG1(
+            proof.quotient_poly_commitments[i] = PairingsBn254.new_g1(
                 serialized_proof[j],
                 serialized_proof[j+1]
             );
@@ -852,7 +859,7 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         
         proof.wire_values_at_z = new PairingsBn254.Fr[](STATE_WIDTH);
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
-            proof.wire_values_at_z[i] = PairingsBn254.newFr(
+            proof.wire_values_at_z[i] = PairingsBn254.new_fr(
                 serialized_proof[j]
             );
 
@@ -861,26 +868,26 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         
         proof.wire_values_at_z_omega = new PairingsBn254.Fr[](1);
         for (uint256 i = 0; i < proof.wire_values_at_z_omega.length; i++) {
-            proof.wire_values_at_z_omega[i] = PairingsBn254.newFr(
+            proof.wire_values_at_z_omega[i] = PairingsBn254.new_fr(
                 serialized_proof[j]
             );
 
             j += 1;
         }
         
-        proof.grand_product_at_z_omega = PairingsBn254.newFr(
+        proof.grand_product_at_z_omega = PairingsBn254.new_fr(
                 serialized_proof[j]
             );
 
         j += 1;
 
-        proof.quotient_polynomial_at_z = PairingsBn254.newFr(
+        proof.quotient_polynomial_at_z = PairingsBn254.new_fr(
             serialized_proof[j]
         );
 
         j += 1;
 
-        proof.linearization_polynomial_at_z = PairingsBn254.newFr(
+        proof.linearization_polynomial_at_z = PairingsBn254.new_fr(
             serialized_proof[j]
         );
 
@@ -888,20 +895,20 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
     
         proof.permutation_polynomials_at_z = new PairingsBn254.Fr[](STATE_WIDTH - 1);
         for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
-            proof.permutation_polynomials_at_z[i] = PairingsBn254.newFr(
+            proof.permutation_polynomials_at_z[i] = PairingsBn254.new_fr(
                 serialized_proof[j]
             );
 
             j += 1;
         }
 
-        proof.opening_at_z_proof = PairingsBn254.newG1(
+        proof.opening_at_z_proof = PairingsBn254.new_g1(
                 serialized_proof[j],
                 serialized_proof[j+1]
         );
         j += 2;
 
-        proof.opening_at_z_omega_proof = PairingsBn254.newG1(
+        proof.opening_at_z_omega_proof = PairingsBn254.new_g1(
                 serialized_proof[j],
                 serialized_proof[j+1]
         );
