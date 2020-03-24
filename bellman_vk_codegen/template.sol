@@ -118,12 +118,23 @@ library PairingsBn254 {
     function point_add_into_dest(G1Point memory p1, G1Point memory p2, G1Point memory dest)
         internal view
     {
-
         uint256[4] memory input;
-        input[0] = p1.X;
-        input[1] = p1.Y;
-        input[2] = p2.X;
-        input[3] = p2.Y;
+        if (p2.X == 0 && p2.Y == 0) {
+            // we add zero, nothing happens
+            dest.X = p1.X;
+            dest.Y = p1.Y;
+            return;
+        } else if (p1.X == 0 && p1.Y == 0) {
+            // we add into zero, and we add non-zero point
+            dest.X = p2.X;
+            dest.Y = p2.Y;
+            return;
+        } else {
+            input[0] = p1.X;
+            input[1] = p1.Y;
+            input[2] = p2.X;
+            input[3] = p2.Y;
+        }
         bool success = false;
         assembly {
             success := staticcall(gas(), 6, input, 0x80, dest, 0x40)
@@ -142,10 +153,12 @@ library PairingsBn254 {
     {
         uint256[4] memory input;
         if (p2.X == 0 && p2.Y == 0) {
+            // we subtracted zero, nothing happens
             dest.X = p1.X;
             dest.Y = p1.Y;
             return;
         } else if (p1.X == 0 && p1.Y == 0) {
+            // we subtract from zero, and we subtract non-zero point
             dest.X = p2.X;
             dest.Y = q_mod - p2.Y;
             return;
