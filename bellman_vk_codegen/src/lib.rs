@@ -196,7 +196,7 @@ mod tests {
             std::fs::File::open("./deposit_vk.key").unwrap()
         );
         let vk = VerificationKey::<Bn256, PlonkCsWidth4WithNextStepParams>::read(&mut reader).unwrap();
-        render_verification_key(&vk, "./verifier.sol");
+        render_verification_key(&vk, "../Verifier.sol");
     }
 
     #[test]

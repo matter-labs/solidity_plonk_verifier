@@ -397,7 +397,7 @@ contract Plonk4VerifierWithAccessToDNext {
             tmp_2.mul_assign(dens[i]);
         }
         
-        for (uint i = 0; i < nums.length; i--) {
+        for (uint i = 0; i < nums.length; i++) {
             nums[i].mul_assign(dens[i]);
         }
 
