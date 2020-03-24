@@ -277,29 +277,31 @@ contract Plonk4VerifierWithAccessToDNext {
     using PairingsBn254 for PairingsBn254.Fr;
     
     using TranscriptLibrary for TranscriptLibrary.Transcript;
+
+    uint256 constant STATE_WIDTH = 4;
     
     struct VerificationKey {
         uint256 domain_size;
         uint256 num_inputs;
         PairingsBn254.Fr omega;
-        PairingsBn254.G1Point[] selector_commitments;
-        PairingsBn254.G1Point[] next_step_selector_commitments;
-        PairingsBn254.G1Point[] permutation_commitments;
-        PairingsBn254.Fr[] permutation_non_residues;
+        PairingsBn254.G1Point[STATE_WIDTH+2] selector_commitments; // STATE_WIDTH for witness + multiplication + constant
+        PairingsBn254.G1Point[1] next_step_selector_commitments;
+        PairingsBn254.G1Point[STATE_WIDTH] permutation_commitments;
+        PairingsBn254.Fr[STATE_WIDTH-1] permutation_non_residues;
         PairingsBn254.G2Point g2_x;
     }
     
     struct Proof {
         uint256[] input_values;
-        PairingsBn254.G1Point[] wire_commitments;
+        PairingsBn254.G1Point[STATE_WIDTH] wire_commitments;
         PairingsBn254.G1Point grand_product_commitment;
-        PairingsBn254.G1Point[] quotient_poly_commitments;
-        PairingsBn254.Fr[] wire_values_at_z;
-        PairingsBn254.Fr[] wire_values_at_z_omega;
+        PairingsBn254.G1Point[STATE_WIDTH] quotient_poly_commitments;
+        PairingsBn254.Fr[STATE_WIDTH] wire_values_at_z;
+        PairingsBn254.Fr[1] wire_values_at_z_omega;
         PairingsBn254.Fr grand_product_at_z_omega;
         PairingsBn254.Fr quotient_polynomial_at_z;
         PairingsBn254.Fr linearization_polynomial_at_z;
-        PairingsBn254.Fr[] permutation_polynomials_at_z;
+        PairingsBn254.Fr[STATE_WIDTH-1] permutation_polynomials_at_z;
     
         PairingsBn254.G1Point opening_at_z_proof;
         PairingsBn254.G1Point opening_at_z_omega_proof;
@@ -314,8 +316,6 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr z;
         PairingsBn254.Fr[] cached_lagrange_evals;
     }
-    
-    uint256 constant STATE_WIDTH = 4;
     
     function evaluate_lagrange_poly_out_of_domain(
         uint256 poly_num, 
@@ -746,7 +746,6 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         vk.domain_size = {{domain_size}};
         vk.num_inputs = {{num_inputs}};
         vk.omega = PairingsBn254.new_fr({{omega}});
-        vk.selector_commitments = new PairingsBn254.G1Point[](STATE_WIDTH+2);
         vk.selector_commitments[0] = PairingsBn254.new_g1(
             {{selector_commitment_0_0}},
             {{selector_commitment_0_1}}
@@ -775,13 +774,11 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         // we only have access to value of the d(x) witness polynomial on the next
         // trace step, so we only need one element here and deal with it in other places
         // by having this in mind
-        vk.next_step_selector_commitments = new PairingsBn254.G1Point[](1);
         vk.next_step_selector_commitments[0] = PairingsBn254.new_g1(
             {{next_step_selector_commitment_0_0}},
             {{next_step_selector_commitment_0_1}}
         );
         
-        vk.permutation_commitments = new PairingsBn254.G1Point[](STATE_WIDTH);
          vk.permutation_commitments[0] = PairingsBn254.new_g1(
             {{permutation_commitment_0_0}},
             {{permutation_commitment_0_1}}
@@ -799,7 +796,6 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
             {{permutation_commitment_3_1}}
         );
         
-        vk.permutation_non_residues = new PairingsBn254.Fr[](STATE_WIDTH-1);
         vk.permutation_non_residues[0] = PairingsBn254.new_fr(
             {{permutation_non_residue_0}}
         );
@@ -831,7 +827,6 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         }
  
         uint256 j = 0;
-        proof.wire_commitments = new PairingsBn254.G1Point[](STATE_WIDTH);
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
             proof.wire_commitments[i] = PairingsBn254.new_g1(
                 serialized_proof[j],
@@ -847,7 +842,6 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
         );
         j += 2;
         
-        proof.quotient_poly_commitments = new PairingsBn254.G1Point[](STATE_WIDTH);
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
             proof.quotient_poly_commitments[i] = PairingsBn254.new_g1(
                 serialized_proof[j],
@@ -857,7 +851,6 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
             j += 2;
         }
         
-        proof.wire_values_at_z = new PairingsBn254.Fr[](STATE_WIDTH);
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
             proof.wire_values_at_z[i] = PairingsBn254.new_fr(
                 serialized_proof[j]
@@ -866,7 +859,6 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
             j += 1;
         }
         
-        proof.wire_values_at_z_omega = new PairingsBn254.Fr[](1);
         for (uint256 i = 0; i < proof.wire_values_at_z_omega.length; i++) {
             proof.wire_values_at_z_omega[i] = PairingsBn254.new_fr(
                 serialized_proof[j]
@@ -893,7 +885,6 @@ contract ConcreteVerifier is Plonk4VerifierWithAccessToDNext {
 
         j += 1;
     
-        proof.permutation_polynomials_at_z = new PairingsBn254.Fr[](STATE_WIDTH - 1);
         for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
             proof.permutation_polynomials_at_z[i] = PairingsBn254.new_fr(
                 serialized_proof[j]
