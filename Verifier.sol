@@ -876,6 +876,8 @@ contract Plonk4Verifier {
         transcript.update_with_fr(proof.linearization_polynomial_at_z);
         
         state.v = transcript.get_challenge();
+        transcript.update_with_g1(proof.opening_at_z_proof);
+        transcript.update_with_g1(proof.opening_at_z_omega_proof);
         state.u = transcript.get_challenge();
         
         return true;
