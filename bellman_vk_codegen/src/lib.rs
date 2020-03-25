@@ -202,13 +202,13 @@ mod tests {
     #[test]
     fn render_simple_xor_key_and_proof() {
         let mut reader = std::io::BufReader::with_capacity(1<<24,
-            std::fs::File::open("./xor_vk.key").unwrap()
+            std::fs::File::open("./deposit_vk.key").unwrap()
         );
         let vk = VerificationKey::<Bn256, PlonkCsWidth4WithNextStepParams>::read(&mut reader).unwrap();
-        render_verification_key(&vk, "./xor.sol");
+        render_verification_key(&vk, "./test.sol");
 
         let mut reader = std::io::BufReader::with_capacity(1<<24,
-            std::fs::File::open("./xor_proof.proof").unwrap()
+            std::fs::File::open("./deposit_proof.proof").unwrap()
         );
         let proof = Proof::<Bn256, PlonkCsWidth4WithNextStepParams>::read(&mut reader).unwrap();
         let (inputs, proof) = serialize_proof(&proof);

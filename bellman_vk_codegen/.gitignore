@@ -1,5 +1,6 @@
 target
 verifier.sol
 xor.sol
+test.sol
 *.key
 *.proof
