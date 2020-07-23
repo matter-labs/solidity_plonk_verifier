@@ -310,28 +310,41 @@ contract Plonk4VerifierWithAccessToDNext {
     
     using TranscriptLibrary for TranscriptLibrary.Transcript;
 
+
+    uint256 constant ZERO = 0;
+    uint256 constant ONE = 1;
+    uint256 constant TWO = 2;
+    uint256 constant THREE = 3;
+    uint256 constant FOUR = 4;
+    
     uint256 constant STATE_WIDTH = 4;
+    uint256 constant NUM_DIFFERENT_GATES = 2;
+    uint256 constant NUM_SETUP_POLYS_FOR_MAIN_GATE = 7;
+    uint256 constant NUM_SETUP_POLYS_RANGE_CHECK_GATE = 0;
     uint256 constant ACCESSIBLE_STATE_POLYS_ON_NEXT_STEP = 1;
+    uint256 constant NUM_GATE_SELECTORS_OPENED_EXPLICITLY = 1;
+    uint256 constant V_POWER_FOR_Z_OMEGA_OPENINGS = 10;
     
     struct VerificationKey {
         uint256 domain_size;
         uint256 num_inputs;
         PairingsBn254.Fr omega;
-        PairingsBn254.G1Point[STATE_WIDTH+2] selector_commitments; // STATE_WIDTH for witness + multiplication + constant
-        PairingsBn254.G1Point[ACCESSIBLE_STATE_POLYS_ON_NEXT_STEP] next_step_selector_commitments;
-        PairingsBn254.G1Point[STATE_WIDTH] permutation_commitments;
-        PairingsBn254.Fr[STATE_WIDTH-1] permutation_non_residues;
+        PairingsBn254.G1Point[NUM_SETUP_POLYS_FOR_MAIN_GATE + NUM_SETUP_POLYS_RANGE_CHECK_GATE] gate_setup_commitments;
+        PairingsBn254.G1Point[NUM_DIFFERENT_GATES] gate_selector_commitments;
+        PairingsBn254.G1Point[STATE_WIDTH] copy_permutation_commitments;
+        PairingsBn254.Fr[STATE_WIDTH-1] copy_permutation_non_residues;
         PairingsBn254.G2Point g2_x;
     }
     
     struct Proof {
         uint256[] input_values;
         PairingsBn254.G1Point[STATE_WIDTH] wire_commitments;
-        PairingsBn254.G1Point grand_product_commitment;
+        PairingsBn254.G1Point copy_permutation_grand_product_commitment;
         PairingsBn254.G1Point[STATE_WIDTH] quotient_poly_commitments;
         PairingsBn254.Fr[STATE_WIDTH] wire_values_at_z;
         PairingsBn254.Fr[ACCESSIBLE_STATE_POLYS_ON_NEXT_STEP] wire_values_at_z_omega;
-        PairingsBn254.Fr grand_product_at_z_omega;
+        PairingsBn254.Fr[NUM_GATE_SELECTORS_OPENED_EXPLICITLY] gate_selector_values_at_z;
+        PairingsBn254.Fr copy_grand_product_at_z_omega;
         PairingsBn254.Fr quotient_polynomial_at_z;
         PairingsBn254.Fr linearization_polynomial_at_z;
         PairingsBn254.Fr[STATE_WIDTH-1] permutation_polynomials_at_z;
@@ -432,11 +445,13 @@ contract Plonk4VerifierWithAccessToDNext {
         res.sub_assign(PairingsBn254.new_fr(1));
     }
     
+    event DebugEvent(bytes32);
+    
     function verify_at_z(
         PartialVerifierState memory state,
         Proof memory proof, 
         VerificationKey memory vk
-    ) internal view returns (bool) {
+    ) internal returns (bool) {
         PairingsBn254.Fr memory lhs = evaluate_vanishing(vk.domain_size, state.z);
         require(lhs.value != 0); // we can not check a polynomial relationship if point `z` is in the domain
         lhs.mul_assign(proof.quotient_polynomial_at_z);
@@ -446,15 +461,31 @@ contract Plonk4VerifierWithAccessToDNext {
         
         // public inputs
         PairingsBn254.Fr memory tmp = PairingsBn254.new_fr(0);
+        PairingsBn254.Fr memory inputs_term = PairingsBn254.new_fr(0);
         for (uint256 i = 0; i < proof.input_values.length; i++) {
             tmp.assign(state.cached_lagrange_evals[i]);
             tmp.mul_assign(PairingsBn254.new_fr(proof.input_values[i]));
-            rhs.add_assign(tmp);
+            inputs_term.add_assign(tmp);
         }
         
-        quotient_challenge.mul_assign(state.alpha);
+        emit DebugEvent(bytes32(inputs_term.value));
         
-        PairingsBn254.Fr memory z_part = PairingsBn254.copy(proof.grand_product_at_z_omega);
+        inputs_term.mul_assign(proof.gate_selector_values_at_z[0]);
+        rhs.add_assign(inputs_term);
+        
+        // now we need 5th power
+        quotient_challenge.mul_assign(state.alpha);
+        emit DebugEvent(bytes32(quotient_challenge.value));
+        quotient_challenge.mul_assign(state.alpha);
+        emit DebugEvent(bytes32(quotient_challenge.value));
+        quotient_challenge.mul_assign(state.alpha);
+        emit DebugEvent(bytes32(quotient_challenge.value));
+        quotient_challenge.mul_assign(state.alpha);
+        emit DebugEvent(bytes32(quotient_challenge.value));
+        quotient_challenge.mul_assign(state.alpha);
+        emit DebugEvent(bytes32(quotient_challenge.value));
+        
+        PairingsBn254.Fr memory z_part = PairingsBn254.copy(proof.copy_grand_product_at_z_omega);
         for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
             tmp.assign(proof.permutation_polynomials_at_z[i]);
             tmp.mul_assign(state.beta);
@@ -480,7 +511,107 @@ contract Plonk4VerifierWithAccessToDNext {
         
         rhs.sub_assign(tmp);
         
+        emit DebugEvent(bytes32(lhs.value));
+        emit DebugEvent(bytes32(rhs.value));
+
         return lhs.value == rhs.value;
+    }
+    
+    function add_contribution_from_range_constraint_gates(
+        PartialVerifierState memory state,
+        Proof memory proof, 
+        PairingsBn254.Fr memory current_alpha
+    ) internal pure returns (PairingsBn254.Fr memory res) {
+        // now add contribution from range constraint gate 
+        // we multiply selector commitment by all the factors (alpha*(c - 4d)(c - 4d - 1)(..-2)(..-3) + alpha^2 * (4b - c)()()() + {} + {})
+        
+        PairingsBn254.Fr memory one_fr = PairingsBn254.new_fr(ONE);
+        PairingsBn254.Fr memory two_fr = PairingsBn254.new_fr(TWO);
+        PairingsBn254.Fr memory three_fr = PairingsBn254.new_fr(THREE);
+        PairingsBn254.Fr memory four_fr = PairingsBn254.new_fr(FOUR);
+        
+        res = PairingsBn254.new_fr(0);
+        PairingsBn254.Fr memory t0 = PairingsBn254.new_fr(0);
+        PairingsBn254.Fr memory t1 = PairingsBn254.new_fr(0);
+        PairingsBn254.Fr memory t2 = PairingsBn254.new_fr(0);
+        
+        for (uint256 i = 0; i < 3; i++) {
+            current_alpha.mul_assign(state.alpha);
+            
+            // high - 4*low
+            
+            // this is 4*low
+            t0 = PairingsBn254.copy(proof.wire_values_at_z[3 - i]);
+            t0.mul_assign(four_fr);
+            
+            // high
+            t1 = PairingsBn254.copy(proof.wire_values_at_z[2 - i]);
+            t1.sub_assign(t0);
+            
+            // t0 is now t1 - {0,1,2,3}
+            
+            // first unroll manually for -0;
+            t2 = PairingsBn254.copy(t1);
+            
+            // -1
+            t0 = PairingsBn254.copy(t1);
+            t0.sub_assign(one_fr);
+            t2.mul_assign(t0);
+            
+            // -2
+            t0 = PairingsBn254.copy(t1);
+            t0.sub_assign(two_fr);
+            t2.mul_assign(t0);
+            
+            // -3
+            t0 = PairingsBn254.copy(t1);
+            t0.sub_assign(three_fr);
+            t2.mul_assign(t0);
+            
+            t2.mul_assign(current_alpha);
+            
+            res.add_assign(t2);
+        }
+        
+        // now also d_next - 4a
+        
+        current_alpha.mul_assign(state.alpha);
+            
+        // high - 4*low
+        
+        // this is 4*low
+        t0 = PairingsBn254.copy(proof.wire_values_at_z[0]);
+        t0.mul_assign(four_fr);
+        
+        // high
+        t1 = PairingsBn254.copy(proof.wire_values_at_z_omega[0]);
+        t1.sub_assign(t0);
+        
+        // t0 is now t1 - {0,1,2,3}
+        
+        // first unroll manually for -0;
+        t2 = PairingsBn254.copy(t1);
+        
+        // -1
+        t0 = PairingsBn254.copy(t1);
+        t0.sub_assign(one_fr);
+        t2.mul_assign(t0);
+        
+        // -2
+        t0 = PairingsBn254.copy(t1);
+        t0.sub_assign(two_fr);
+        t2.mul_assign(t0);
+        
+        // -3
+        t0 = PairingsBn254.copy(t1);
+        t0.sub_assign(three_fr);
+        t2.mul_assign(t0);
+        
+        t2.mul_assign(current_alpha);
+        
+        res.add_assign(t2);
+        
+        return res;
     }
     
     function reconstruct_d(
@@ -494,45 +625,59 @@ contract Plonk4VerifierWithAccessToDNext {
             // t_0(x) + z^n * t_1(x) + z^2n * t_2(x) + z^3n * t_3(x) - t(z)
             // + v (r(x) - r(z))
             // + v^{2..5} * (witness(x) - witness(z))
-            // + v^(6..8) * (permutation(x) - permutation(z))
+            // + v^{6} * (selector(x) - selector(z))
+            // + v^{7..9} * (permutation(x) - permutation(z))
         // ]
         // W'(x) = 1 / (x - z*omega) *
         // [
-            // + v^9 (z(x) - z(z*omega)) <- we need this power
-            // + v^10 * (d(x) - d(z*omega))
+            // + v^10 (z(x) - z(z*omega)) <- we need this power
+            // + v^11 * (d(x) - d(z*omega))
         // ]
         //
-        // we pay a little for a few arithmetic operations to not introduce another constant
-        uint256 power_for_z_omega_opening = 1 + 1 + STATE_WIDTH + STATE_WIDTH - 1;
-        res = PairingsBn254.copy_g1(vk.selector_commitments[STATE_WIDTH + 1]);
+
+        // we reconstruct linearization polynomial virtual selector 
+        // for that purpose we first linearize over main gate (over all it's selectors)
+        // and multiply them by value(!) of the corresponding main gate selector
+        res = PairingsBn254.copy_g1(vk.gate_setup_commitments[STATE_WIDTH + 1]); // index of q_const(x)
                 
         PairingsBn254.G1Point memory tmp_g1 = PairingsBn254.P1();
         PairingsBn254.Fr memory tmp_fr = PairingsBn254.new_fr(0);
         
         // addition gates
         for (uint256 i = 0; i < STATE_WIDTH; i++) {
-            tmp_g1 = vk.selector_commitments[i].point_mul(proof.wire_values_at_z[i]);
+            tmp_g1 = vk.gate_setup_commitments[i].point_mul(proof.wire_values_at_z[i]);
             res.point_add_assign(tmp_g1);
         }
         
         // multiplication gate
         tmp_fr.assign(proof.wire_values_at_z[0]);
         tmp_fr.mul_assign(proof.wire_values_at_z[1]);
-        tmp_g1 = vk.selector_commitments[STATE_WIDTH].point_mul(tmp_fr);
+        tmp_g1 = vk.gate_setup_commitments[STATE_WIDTH].point_mul(tmp_fr);
         res.point_add_assign(tmp_g1);
         
         // d_next
-        tmp_g1 = vk.next_step_selector_commitments[0].point_mul(proof.wire_values_at_z_omega[0]);
+        tmp_g1 = vk.gate_setup_commitments[6].point_mul(proof.wire_values_at_z_omega[0]); // index of q_d_next(x)
         res.point_add_assign(tmp_g1);
+        // multiply by main gate selector(z)
+        res.point_mul_assign(proof.gate_selector_values_at_z[0]); // these is only one explicitly opened selector
+        
+        PairingsBn254.Fr memory current_alpha = PairingsBn254.new_fr(ONE);
+        
+        // calculate scalar contribution from the range check gate
+        tmp_fr = add_contribution_from_range_constraint_gates(state, proof, current_alpha);
+        tmp_g1 = vk.gate_selector_commitments[0].point_mul(tmp_fr); // selector commitment * scalar
+        res.point_add_assign(tmp_g1);
+        
+        // proceed as normal to copy permutation
         
         // z * non_res * beta + gamma + a
         PairingsBn254.Fr memory grand_product_part_at_z = PairingsBn254.copy(state.z);
         grand_product_part_at_z.mul_assign(state.beta);
         grand_product_part_at_z.add_assign(proof.wire_values_at_z[0]);
         grand_product_part_at_z.add_assign(state.gamma);
-        for (uint256 i = 0; i < vk.permutation_non_residues.length; i++) {
+        for (uint256 i = 0; i < vk.copy_permutation_non_residues.length; i++) {
             tmp_fr.assign(state.z);
-            tmp_fr.mul_assign(vk.permutation_non_residues[i]);
+            tmp_fr.mul_assign(vk.copy_permutation_non_residues[i]);
             tmp_fr.mul_assign(state.beta);
             tmp_fr.add_assign(state.gamma);
             tmp_fr.add_assign(proof.wire_values_at_z[i+1]);
@@ -540,15 +685,17 @@ contract Plonk4VerifierWithAccessToDNext {
             grand_product_part_at_z.mul_assign(tmp_fr);
         }
         
-        grand_product_part_at_z.mul_assign(state.alpha);
+        grand_product_part_at_z.mul_assign(current_alpha);
+        
+        // alpha^n & L_{0}(z)
+        current_alpha.mul_assign(state.alpha);
     
         tmp_fr.assign(state.cached_lagrange_evals[0]);
-        tmp_fr.mul_assign(state.alpha);
-        tmp_fr.mul_assign(state.alpha);
+        tmp_fr.mul_assign(current_alpha);
         
         grand_product_part_at_z.add_assign(tmp_fr);
         
-        PairingsBn254.Fr memory grand_product_part_at_z_omega = state.v.pow(power_for_z_omega_opening);
+        PairingsBn254.Fr memory grand_product_part_at_z_omega = state.v.pow(V_POWER_FOR_Z_OMEGA_OPENINGS);
         grand_product_part_at_z_omega.mul_assign(state.u);
         
         PairingsBn254.Fr memory last_permutation_part_at_z = PairingsBn254.new_fr(1);
@@ -562,24 +709,24 @@ contract Plonk4VerifierWithAccessToDNext {
         }
 
         last_permutation_part_at_z.mul_assign(state.beta);
-        last_permutation_part_at_z.mul_assign(proof.grand_product_at_z_omega);
+        last_permutation_part_at_z.mul_assign(proof.copy_grand_product_at_z_omega);
         last_permutation_part_at_z.mul_assign(state.alpha);
         
         // add to the linearization
-        tmp_g1 = proof.grand_product_commitment.point_mul(grand_product_part_at_z);
-        tmp_g1.point_sub_assign(vk.permutation_commitments[STATE_WIDTH - 1].point_mul(last_permutation_part_at_z));
+        tmp_g1 = proof.copy_permutation_grand_product_commitment.point_mul(grand_product_part_at_z);
+        tmp_g1.point_sub_assign(vk.copy_permutation_commitments[STATE_WIDTH - 1].point_mul(last_permutation_part_at_z));
 
         res.point_add_assign(tmp_g1);
         res.point_mul_assign(state.v);
         
-        res.point_add_assign(proof.grand_product_commitment.point_mul(grand_product_part_at_z_omega));
+        res.point_add_assign(proof.copy_permutation_grand_product_commitment.point_mul(grand_product_part_at_z_omega));
     }
     
     function verify_commitments(
         PartialVerifierState memory state,
         Proof memory proof, 
         VerificationKey memory vk
-    ) internal view returns (bool) {
+    ) internal view returns (PairingsBn254.G1Point[2] memory res) {
         PairingsBn254.G1Point memory d = reconstruct_d(state, proof, vk);
         
         PairingsBn254.Fr memory z_in_domain_size = state.z.pow(vk.domain_size);
@@ -605,9 +752,9 @@ contract Plonk4VerifierWithAccessToDNext {
             commitment_aggregation.point_add_assign(tmp_g1);
         }
         
-        for (uint i = 0; i < vk.permutation_commitments.length - 1; i++) {
+        for (uint i = 0; i < vk.copy_permutation_commitments.length - 1; i++) {
             aggregation_challenge.mul_assign(state.v);
-            tmp_g1 = vk.permutation_commitments[i].point_mul(aggregation_challenge);
+            tmp_g1 = vk.copy_permutation_commitments[i].point_mul(aggregation_challenge);
             commitment_aggregation.point_add_assign(tmp_g1);
         }
         
@@ -649,7 +796,7 @@ contract Plonk4VerifierWithAccessToDNext {
         
         aggregation_challenge.mul_assign(state.v);
 
-        tmp_fr.assign(proof.grand_product_at_z_omega);
+        tmp_fr.assign(proof.copy_grand_product_at_z_omega);
         tmp_fr.mul_assign(aggregation_challenge);
         tmp_fr.mul_assign(state.u);
         aggregated_value.add_assign(tmp_fr);
@@ -674,15 +821,18 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.G1Point memory pair_with_x = proof.opening_at_z_omega_proof.point_mul(state.u);
         pair_with_x.point_add_assign(proof.opening_at_z_proof);
         pair_with_x.negate();
+
+        res[0] = pair_with_generator;
+        res[1] = pair_with_x;
         
-        return PairingsBn254.pairingProd2(pair_with_generator, PairingsBn254.P2(), pair_with_x, vk.g2_x);
+        return res;
     }
     
     function verify_initial(
         PartialVerifierState memory state, 
         Proof memory proof, 
         VerificationKey memory vk
-    ) internal view returns (bool) {
+    ) internal returns (bool) {
         require(proof.input_values.length == vk.num_inputs);
         require(vk.num_inputs >= 1);
         TranscriptLibrary.Transcript memory transcript = TranscriptLibrary.new_transcript();
@@ -697,7 +847,7 @@ contract Plonk4VerifierWithAccessToDNext {
         state.beta = transcript.get_challenge();
         state.gamma = transcript.get_challenge();
         
-        transcript.update_with_g1(proof.grand_product_commitment);
+        transcript.update_with_g1(proof.copy_permutation_grand_product_commitment);
         state.alpha = transcript.get_challenge();
         
         for (uint256 i = 0; i < proof.quotient_poly_commitments.length; i++) {
@@ -718,10 +868,18 @@ contract Plonk4VerifierWithAccessToDNext {
         );
 
         bool valid = verify_at_z(state, proof, vk);
-
+        
+        if (valid) {
+            emit DebugEvent(bytes32(uint256(1)));
+        } else {
+            emit DebugEvent(bytes32(uint256(0)));
+        }
+        
         if (valid == false) {
             return false;
         }
+        
+        transcript.update_with_fr(proof.quotient_polynomial_at_z);
         
         for (uint256 i = 0; i < proof.wire_values_at_z.length; i++) {
             transcript.update_with_fr(proof.wire_values_at_z[i]);
@@ -731,15 +889,17 @@ contract Plonk4VerifierWithAccessToDNext {
             transcript.update_with_fr(proof.wire_values_at_z_omega[i]);
         }
         
+        transcript.update_with_fr(proof.gate_selector_values_at_z[0]);
+        
         for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
             transcript.update_with_fr(proof.permutation_polynomials_at_z[i]);
         }
         
-        transcript.update_with_fr(proof.quotient_polynomial_at_z);
+        transcript.update_with_fr(proof.copy_grand_product_at_z_omega);
         transcript.update_with_fr(proof.linearization_polynomial_at_z);
-        transcript.update_with_fr(proof.grand_product_at_z_omega);
         
         state.v = transcript.get_challenge();
+        emit DebugEvent(bytes32(state.v.value));
         transcript.update_with_g1(proof.opening_at_z_proof);
         transcript.update_with_g1(proof.opening_at_z_omega_proof);
         state.u = transcript.get_challenge();
@@ -760,7 +920,7 @@ contract Plonk4VerifierWithAccessToDNext {
     // q_d_next(X) "peeks" into the next row of the trace, so it takes 
     // the same d(X) polynomial, but shifted  
     
-    function verify(Proof memory proof, VerificationKey memory vk) internal view returns (bool) {
+    function verify(Proof memory proof, VerificationKey memory vk) internal returns (bool) {
         PartialVerifierState memory state;
         
         bool valid = verify_initial(state, proof, vk);
@@ -769,84 +929,93 @@ contract Plonk4VerifierWithAccessToDNext {
             return false;
         }
         
-        valid = verify_commitments(state, proof, vk);
+        PairingsBn254.G1Point[2] memory recursive_proof_part = verify_commitments(state, proof, vk);
+        
+        bool intrinsic_validity = PairingsBn254.pairingProd2(recursive_proof_part[0], PairingsBn254.P2(), recursive_proof_part[1], vk.g2_x);
+        
+        assert(intrinsic_validity);
         
         return valid;
     }
 }
 
 contract KeyedVerifier is Plonk4VerifierWithAccessToDNext {
-    uint256 constant SERIALIZED_PROOF_LENGTH = 33;
+    uint256 constant SERIALIZED_PROOF_LENGTH = 34;
 
     function get_verification_key() internal pure returns(VerificationKey memory vk) {
-        vk.domain_size = {{domain_size}};
-        vk.num_inputs = {{num_inputs}};
-        vk.omega = PairingsBn254.new_fr({{omega}});
-        vk.selector_commitments[0] = PairingsBn254.new_g1(
-            {{selector_commitment_0_0}},
-            {{selector_commitment_0_1}}
+        vk.domain_size = 4194304;
+        vk.num_inputs = 1;
+        vk.omega = PairingsBn254.new_fr(0x18c95f1ae6514e11a1b30fd7923947c5ffcec5347f16e91b4dd654168326bede);
+        vk.gate_setup_commitments[0] = PairingsBn254.new_g1(
+            0x191bf5eb647f7404974c2d544e233d8031c11c89293068a29518c4f3b5a82b87,
+            0x0289da987409f93ba5c56239b117a4fd3a73bd16c0ba62df82fd0dbd07ba2b04
         );
-        vk.selector_commitments[1] = PairingsBn254.new_g1(
-            {{selector_commitment_1_0}},
-            {{selector_commitment_1_1}}
+        vk.gate_setup_commitments[1] = PairingsBn254.new_g1(
+            0x03edf444cead2f57dbb73e9a0e2e98985899bb0793d40f34a76df3967a11815f,
+            0x0a5a682b95673c2f0eb8fbc4de0b2f8bddd237922e2a15bbf8edc7f19bb84086
         );
-        vk.selector_commitments[2] = PairingsBn254.new_g1(
-            {{selector_commitment_2_0}},
-            {{selector_commitment_2_1}}
+        vk.gate_setup_commitments[2] = PairingsBn254.new_g1(
+            0x1fda99eb18dc0eddcda13b81796b3c289b2b4f6f72ebf306334dc52d01206319,
+            0x0b380b280f6e74e6e47381bef76d00f951d742fbbd9814f87fb8b062ce52b07f
         );
-        vk.selector_commitments[3] = PairingsBn254.new_g1(
-            {{selector_commitment_3_0}},
-            {{selector_commitment_3_1}}
+        vk.gate_setup_commitments[3] = PairingsBn254.new_g1(
+            0x133299193c2b6934a5056a8e154525334072af2f9979219bff66d40ebffa5c2a,
+            0x212c48e85f3f03383beca295d1980e8d4aa8ef3e32f9a6cdefa300feae4aafd9
         );
-        vk.selector_commitments[4] = PairingsBn254.new_g1(
-            {{selector_commitment_4_0}},
-            {{selector_commitment_4_1}}
+        vk.gate_setup_commitments[4] = PairingsBn254.new_g1(
+            0x058441552b7a4ca0f6ee97be2f26ff6ca4a4ea7f4d90096dd6661f42d40a1d9a,
+            0x13ab4586de2cc5d1078a56758f6f5487bc1106d9f967600933871d6d7a81be83
         );
-        vk.selector_commitments[5] = PairingsBn254.new_g1(
-            {{selector_commitment_5_0}},
-            {{selector_commitment_5_1}}
+        vk.gate_setup_commitments[5] = PairingsBn254.new_g1(
+            0x23a87dffd37ecbd5578a600effce1d22c79c9e869c3804420911be175c6fe665,
+            0x0e8f6b12c32d24dcb05721a416a6ea229b6b22d2b2ffaaab308ebf873b2a86a9
         );
-        
-        // we only have access to value of the d(x) witness polynomial on the next
-        // trace step, so we only need one element here and deal with it in other places
-        // by having this in mind
-        vk.next_step_selector_commitments[0] = PairingsBn254.new_g1(
-            {{next_step_selector_commitment_0_0}},
-            {{next_step_selector_commitment_0_1}}
+        vk.gate_setup_commitments[6] = PairingsBn254.new_g1(
+            0x0e4d82b94eb786f366e56eea23570a83fbfde56fb4b5328dc65e0ba416a9d66e,
+            0x23b6a34454e1ef57543f506e032fc3666583245fa8d0e1972d1ffc2a03b39bba
         );
         
-         vk.permutation_commitments[0] = PairingsBn254.new_g1(
-            {{permutation_commitment_0_0}},
-            {{permutation_commitment_0_1}}
+        vk.gate_selector_commitments[0] = PairingsBn254.new_g1(
+            0x033ced9a86f0149c5e11ccb5f83e390b730ce1d03352ea111d2ec19586c05a51,
+            0x1e5c131310795ba1e6bbaf8c0700eb9a03929fcc39491757d596780de8147c08
         );
-        vk.permutation_commitments[1] = PairingsBn254.new_g1(
-            {{permutation_commitment_1_0}},
-            {{permutation_commitment_1_1}}
+        vk.gate_selector_commitments[1] = PairingsBn254.new_g1(
+            0x070cf4fdda67b7e084b2c96ac73fb7ff9119fd447c5ab7e5daabfa5dd5f3395e,
+            0x06047d1a934d58f61f345b91e9aebab1092102ebcab0ba9196119784a881767d
         );
-        vk.permutation_commitments[2] = PairingsBn254.new_g1(
-            {{permutation_commitment_2_0}},
-            {{permutation_commitment_2_1}}
+
+        vk.copy_permutation_commitments[0] = PairingsBn254.new_g1(
+            0x0b1b50cee2777e03088ffaffcae0d77136274d721eb7fe5ef97ca72e6ec235f5,
+            0x145cb123ae891ae63f525d447d52f90206824d3616ccc85ebb5eff8f2ff109b2
         );
-        vk.permutation_commitments[3] = PairingsBn254.new_g1(
-            {{permutation_commitment_3_0}},
-            {{permutation_commitment_3_1}}
+        vk.copy_permutation_commitments[1] = PairingsBn254.new_g1(
+            0x0374b6a602699e56ac5ebf8f7b1ee8f432a54d8f133ff0d0b4c7a68efc9e9513,
+            0x24f22112315c574096f642b60b372494a661999db5b1b57c2a0af1f93329f548
+        );
+        vk.copy_permutation_commitments[2] = PairingsBn254.new_g1(
+            0x2663bb35e725e7e6b473b753032ae175193674388311e82a2bd1c2a008f0dd40,
+            0x02965c14a41c8846d4e0abe0de3786209aaa4db2689a9401fb0f1a562afca435
+        );
+        vk.copy_permutation_commitments[3] = PairingsBn254.new_g1(
+            0x2dd86ba3b5fceea533ae2feba3f01e97261faf9e458501eafa5dd608a50049da,
+            0x26e06bb657495b8d898ca7065ebc2f47f9f53724ff684f0b9d633e0c69c523ed
         );
         
-        vk.permutation_non_residues[0] = PairingsBn254.new_fr(
-            {{permutation_non_residue_0}}
+        vk.copy_permutation_non_residues[0] = PairingsBn254.new_fr(
+            0x0000000000000000000000000000000000000000000000000000000000000005
         );
-        vk.permutation_non_residues[1] = PairingsBn254.new_fr(
-            {{permutation_non_residue_1}}
+        vk.copy_permutation_non_residues[1] = PairingsBn254.new_fr(
+            0x0000000000000000000000000000000000000000000000000000000000000007
         );
-        vk.permutation_non_residues[2] = PairingsBn254.new_fr(
-            {{permutation_non_residue_2}}
+        vk.copy_permutation_non_residues[2] = PairingsBn254.new_fr(
+            0x000000000000000000000000000000000000000000000000000000000000000a
         );
         
         vk.g2_x = PairingsBn254.new_g2(
-            [{{g2_x_x_c1}},
-             {{g2_x_x_c0}}],
-            [{{g2_x_y_c1}},
-             {{g2_x_y_c0}}]
+            [0x260e01b251f6f1c7e7ff4e580791dee8ea51d87a358e038b4efe30fac09383c1,
+             0x0118c4d5b837bcc2bc89b5b398b5974e9f5944073b32078b7e231fec938883b0],
+            [0x04fc6369f7110fe3d25156c1bb9a72859cf2a04641f99ba4ee413c80da6a5fe4,
+             0x22febda3c0c0632a56475b4214e5615e11e6dd3f96e6cea2854a87d4dacc5e55]
         );
     }
 
@@ -871,7 +1040,7 @@ contract KeyedVerifier is Plonk4VerifierWithAccessToDNext {
             j += 2;
         }
         
-        proof.grand_product_commitment = PairingsBn254.new_g1_checked(
+        proof.copy_permutation_grand_product_commitment = PairingsBn254.new_g1_checked(
                 serialized_proof[j],
                 serialized_proof[j+1]
         );
@@ -901,8 +1070,25 @@ contract KeyedVerifier is Plonk4VerifierWithAccessToDNext {
 
             j += 1;
         }
+
+        for (uint256 i = 0; i < proof.gate_selector_values_at_z.length; i++) {
+            proof.gate_selector_values_at_z[i] = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+
+            j += 1;
+        }
         
-        proof.grand_product_at_z_omega = PairingsBn254.new_fr(
+        for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
+            proof.permutation_polynomials_at_z[i] = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+
+            j += 1;
+        }
+
+
+        proof.copy_grand_product_at_z_omega = PairingsBn254.new_fr(
                 serialized_proof[j]
             );
 
@@ -919,14 +1105,6 @@ contract KeyedVerifier is Plonk4VerifierWithAccessToDNext {
         );
 
         j += 1;
-    
-        for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
-            proof.permutation_polynomials_at_z[i] = PairingsBn254.new_fr(
-                serialized_proof[j]
-            );
-
-            j += 1;
-        }
 
         proof.opening_at_z_proof = PairingsBn254.new_g1_checked(
                 serialized_proof[j],
