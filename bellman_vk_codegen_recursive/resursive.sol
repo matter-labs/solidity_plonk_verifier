@@ -323,7 +323,9 @@ contract Plonk4VerifierWithAccessToDNext {
     uint256 constant NUM_SETUP_POLYS_RANGE_CHECK_GATE = 0;
     uint256 constant ACCESSIBLE_STATE_POLYS_ON_NEXT_STEP = 1;
     uint256 constant NUM_GATE_SELECTORS_OPENED_EXPLICITLY = 1;
-    uint256 constant V_POWER_FOR_Z_OMEGA_OPENINGS = 10;
+
+    uint256 constant RECURSIVE_CIRCUIT_INPUT_COMMITMENT_MASK = 0x00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+    uint256 constant LIMB_WIDTH = 68;
     
     struct VerificationKey {
         uint256 domain_size;
@@ -445,13 +447,11 @@ contract Plonk4VerifierWithAccessToDNext {
         res.sub_assign(PairingsBn254.new_fr(1));
     }
     
-    event DebugEvent(bytes32);
-    
     function verify_at_z(
         PartialVerifierState memory state,
         Proof memory proof, 
         VerificationKey memory vk
-    ) internal returns (bool) {
+    ) internal view returns (bool) {
         PairingsBn254.Fr memory lhs = evaluate_vanishing(vk.domain_size, state.z);
         require(lhs.value != 0); // we can not check a polynomial relationship if point `z` is in the domain
         lhs.mul_assign(proof.quotient_polynomial_at_z);
@@ -468,22 +468,15 @@ contract Plonk4VerifierWithAccessToDNext {
             inputs_term.add_assign(tmp);
         }
         
-        emit DebugEvent(bytes32(inputs_term.value));
-        
         inputs_term.mul_assign(proof.gate_selector_values_at_z[0]);
         rhs.add_assign(inputs_term);
         
         // now we need 5th power
         quotient_challenge.mul_assign(state.alpha);
-        emit DebugEvent(bytes32(quotient_challenge.value));
         quotient_challenge.mul_assign(state.alpha);
-        emit DebugEvent(bytes32(quotient_challenge.value));
         quotient_challenge.mul_assign(state.alpha);
-        emit DebugEvent(bytes32(quotient_challenge.value));
         quotient_challenge.mul_assign(state.alpha);
-        emit DebugEvent(bytes32(quotient_challenge.value));
         quotient_challenge.mul_assign(state.alpha);
-        emit DebugEvent(bytes32(quotient_challenge.value));
         
         PairingsBn254.Fr memory z_part = PairingsBn254.copy(proof.copy_grand_product_at_z_omega);
         for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
@@ -510,10 +503,7 @@ contract Plonk4VerifierWithAccessToDNext {
         tmp.mul_assign(quotient_challenge);
         
         rhs.sub_assign(tmp);
-        
-        emit DebugEvent(bytes32(lhs.value));
-        emit DebugEvent(bytes32(rhs.value));
-
+    
         return lhs.value == rhs.value;
     }
     
@@ -614,7 +604,7 @@ contract Plonk4VerifierWithAccessToDNext {
         return res;
     }
     
-    function reconstruct_d(
+    function reconstruct_linearization_commitment(
         PartialVerifierState memory state,
         Proof memory proof, 
         VerificationKey memory vk
@@ -639,7 +629,7 @@ contract Plonk4VerifierWithAccessToDNext {
         // for that purpose we first linearize over main gate (over all it's selectors)
         // and multiply them by value(!) of the corresponding main gate selector
         res = PairingsBn254.copy_g1(vk.gate_setup_commitments[STATE_WIDTH + 1]); // index of q_const(x)
-                
+        
         PairingsBn254.G1Point memory tmp_g1 = PairingsBn254.P1();
         PairingsBn254.Fr memory tmp_fr = PairingsBn254.new_fr(0);
         
@@ -656,8 +646,9 @@ contract Plonk4VerifierWithAccessToDNext {
         res.point_add_assign(tmp_g1);
         
         // d_next
-        tmp_g1 = vk.gate_setup_commitments[6].point_mul(proof.wire_values_at_z_omega[0]); // index of q_d_next(x)
+        tmp_g1 = vk.gate_setup_commitments[STATE_WIDTH+2].point_mul(proof.wire_values_at_z_omega[0]); // index of q_d_next(x)
         res.point_add_assign(tmp_g1);
+        
         // multiply by main gate selector(z)
         res.point_mul_assign(proof.gate_selector_values_at_z[0]); // these is only one explicitly opened selector
         
@@ -665,10 +656,13 @@ contract Plonk4VerifierWithAccessToDNext {
         
         // calculate scalar contribution from the range check gate
         tmp_fr = add_contribution_from_range_constraint_gates(state, proof, current_alpha);
-        tmp_g1 = vk.gate_selector_commitments[0].point_mul(tmp_fr); // selector commitment * scalar
+        tmp_g1 = vk.gate_selector_commitments[1].point_mul(tmp_fr); // selector commitment for range constraint gate * scalar
         res.point_add_assign(tmp_g1);
         
         // proceed as normal to copy permutation
+        current_alpha.mul_assign(state.alpha); // alpha^5
+        
+        PairingsBn254.Fr memory alpha_for_grand_product = PairingsBn254.copy(current_alpha);
         
         // z * non_res * beta + gamma + a
         PairingsBn254.Fr memory grand_product_part_at_z = PairingsBn254.copy(state.z);
@@ -685,9 +679,9 @@ contract Plonk4VerifierWithAccessToDNext {
             grand_product_part_at_z.mul_assign(tmp_fr);
         }
         
-        grand_product_part_at_z.mul_assign(current_alpha);
-        
-        // alpha^n & L_{0}(z)
+        grand_product_part_at_z.mul_assign(alpha_for_grand_product);
+
+        // alpha^n & L_{0}(z), and we bump current_alpha
         current_alpha.mul_assign(state.alpha);
     
         tmp_fr.assign(state.cached_lagrange_evals[0]);
@@ -695,9 +689,10 @@ contract Plonk4VerifierWithAccessToDNext {
         
         grand_product_part_at_z.add_assign(tmp_fr);
         
-        PairingsBn254.Fr memory grand_product_part_at_z_omega = state.v.pow(V_POWER_FOR_Z_OMEGA_OPENINGS);
-        grand_product_part_at_z_omega.mul_assign(state.u);
-        
+        // prefactor for grand_product(x) is complete
+
+        // add to the linearization a part from the term
+        // - (a(z) + beta*perm_a + gamma)*()*()*z(z*omega) * beta * perm_d(X)
         PairingsBn254.Fr memory last_permutation_part_at_z = PairingsBn254.new_fr(1);
         for (uint256 i = 0; i < proof.permutation_polynomials_at_z.length; i++) {
             tmp_fr.assign(state.beta);
@@ -710,24 +705,29 @@ contract Plonk4VerifierWithAccessToDNext {
 
         last_permutation_part_at_z.mul_assign(state.beta);
         last_permutation_part_at_z.mul_assign(proof.copy_grand_product_at_z_omega);
-        last_permutation_part_at_z.mul_assign(state.alpha);
+        last_permutation_part_at_z.mul_assign(alpha_for_grand_product); // we multiply by the power of alpha from the argument
         
-        // add to the linearization
+        // actually multiply prefactors by z(x) and perm_d(x) and combine them
         tmp_g1 = proof.copy_permutation_grand_product_commitment.point_mul(grand_product_part_at_z);
         tmp_g1.point_sub_assign(vk.copy_permutation_commitments[STATE_WIDTH - 1].point_mul(last_permutation_part_at_z));
 
         res.point_add_assign(tmp_g1);
+        // multiply them by v immedately as linearization has a factor of v^1
         res.point_mul_assign(state.v);
+        // res now contains contribution from the gates linearization and 
+        // copy permutation part 
         
-        res.point_add_assign(proof.copy_permutation_grand_product_commitment.point_mul(grand_product_part_at_z_omega));
+        // now we need to add a part that is the rest
+        // for z(x*omega): 
+        // - (a(z) + beta*perm_a + gamma)*()*()*(d(z) + gamma) * z(x*omega)
     }
     
-    function verify_commitments(
+    function aggregate_commitments(
         PartialVerifierState memory state,
         Proof memory proof, 
         VerificationKey memory vk
     ) internal view returns (PairingsBn254.G1Point[2] memory res) {
-        PairingsBn254.G1Point memory d = reconstruct_d(state, proof, vk);
+        PairingsBn254.G1Point memory d = reconstruct_linearization_commitment(state, proof, vk);
         
         PairingsBn254.Fr memory z_in_domain_size = state.z.pow(vk.domain_size);
         
@@ -752,6 +752,12 @@ contract Plonk4VerifierWithAccessToDNext {
             commitment_aggregation.point_add_assign(tmp_g1);
         }
         
+        for (uint i = 0; i < NUM_GATE_SELECTORS_OPENED_EXPLICITLY; i++) {
+            aggregation_challenge.mul_assign(state.v);
+            tmp_g1 = vk.gate_selector_commitments[0].point_mul(aggregation_challenge);
+            commitment_aggregation.point_add_assign(tmp_g1);
+        }
+        
         for (uint i = 0; i < vk.copy_permutation_commitments.length - 1; i++) {
             aggregation_challenge.mul_assign(state.v);
             tmp_g1 = vk.copy_permutation_commitments[i].point_mul(aggregation_challenge);
@@ -759,6 +765,10 @@ contract Plonk4VerifierWithAccessToDNext {
         }
         
         aggregation_challenge.mul_assign(state.v);
+       // now do prefactor for grand_product(x*omega)
+        tmp_fr.assign(aggregation_challenge);
+        tmp_fr.mul_assign(state.u);
+        commitment_aggregation.point_add_assign(proof.copy_permutation_grand_product_commitment.point_mul(tmp_fr));
 
         aggregation_challenge.mul_assign(state.v);
 
@@ -782,6 +792,13 @@ contract Plonk4VerifierWithAccessToDNext {
             aggregation_challenge.mul_assign(state.v);
             
             tmp_fr.assign(proof.wire_values_at_z[i]);
+            tmp_fr.mul_assign(aggregation_challenge);
+            aggregated_value.add_assign(tmp_fr);
+        }
+        
+        for (uint i = 0; i < proof.gate_selector_values_at_z.length; i++) {
+            aggregation_challenge.mul_assign(state.v);
+            tmp_fr.assign(proof.gate_selector_values_at_z[i]);
             tmp_fr.mul_assign(aggregation_challenge);
             aggregated_value.add_assign(tmp_fr);
         }
@@ -832,7 +849,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PartialVerifierState memory state, 
         Proof memory proof, 
         VerificationKey memory vk
-    ) internal returns (bool) {
+    ) internal view returns (bool) {
         require(proof.input_values.length == vk.num_inputs);
         require(vk.num_inputs >= 1);
         TranscriptLibrary.Transcript memory transcript = TranscriptLibrary.new_transcript();
@@ -869,12 +886,6 @@ contract Plonk4VerifierWithAccessToDNext {
 
         bool valid = verify_at_z(state, proof, vk);
         
-        if (valid) {
-            emit DebugEvent(bytes32(uint256(1)));
-        } else {
-            emit DebugEvent(bytes32(uint256(0)));
-        }
-        
         if (valid == false) {
             return false;
         }
@@ -899,7 +910,6 @@ contract Plonk4VerifierWithAccessToDNext {
         transcript.update_with_fr(proof.linearization_polynomial_at_z);
         
         state.v = transcript.get_challenge();
-        emit DebugEvent(bytes32(state.v.value));
         transcript.update_with_g1(proof.opening_at_z_proof);
         transcript.update_with_g1(proof.opening_at_z_omega_proof);
         state.u = transcript.get_challenge();
@@ -920,22 +930,98 @@ contract Plonk4VerifierWithAccessToDNext {
     // q_d_next(X) "peeks" into the next row of the trace, so it takes 
     // the same d(X) polynomial, but shifted  
     
-    function verify(Proof memory proof, VerificationKey memory vk) internal returns (bool) {
+    function aggregate_for_verification(Proof memory proof, VerificationKey memory vk) internal view returns (bool valid, PairingsBn254.G1Point[2] memory part) {
         PartialVerifierState memory state;
         
-        bool valid = verify_initial(state, proof, vk);
+        valid = verify_initial(state, proof, vk);
         
+        if (valid == false) {
+            return (valid, part);
+        }
+        
+        part = aggregate_commitments(state, proof, vk);
+
+        (valid, part);
+    }
+    
+    function verify(Proof memory proof, VerificationKey memory vk) internal view returns (bool) {
+        (bool valid, PairingsBn254.G1Point[2] memory recursive_proof_part) = aggregate_for_verification(proof, vk);
+        if (valid == false) {
+            return false;
+        }
+
+        valid = PairingsBn254.pairingProd2(recursive_proof_part[0], PairingsBn254.P2(), recursive_proof_part[1], vk.g2_x);
+        
+        return valid;
+    }
+    
+    function verify_recursive(
+        Proof memory proof, 
+        VerificationKey memory vk, 
+        uint256 recursive_vks_root,
+        uint8 max_valid_index,
+        uint8[] memory recursive_vks_indexes,
+        uint256[] memory individual_vks_inputs,
+        uint256[16] memory subproofs_limbs
+    ) internal view returns (bool) {
+        (uint256 recursive_input, PairingsBn254.G1Point[2] memory aggregated_g1s) = reconstruct_recursive_public_input(
+            recursive_vks_root, max_valid_index, recursive_vks_indexes,
+            individual_vks_inputs, subproofs_limbs
+        );
+        
+        assert(recursive_input == proof.input_values[0]);
+        
+        (bool valid, PairingsBn254.G1Point[2] memory recursive_proof_part) = aggregate_for_verification(proof, vk);
         if (valid == false) {
             return false;
         }
         
-        PairingsBn254.G1Point[2] memory recursive_proof_part = verify_commitments(state, proof, vk);
+        recursive_proof_part[0].point_add_assign(aggregated_g1s[0]);
+        recursive_proof_part[1].point_add_assign(aggregated_g1s[1]);
         
-        bool intrinsic_validity = PairingsBn254.pairingProd2(recursive_proof_part[0], PairingsBn254.P2(), recursive_proof_part[1], vk.g2_x);
-        
-        assert(intrinsic_validity);
+        valid = PairingsBn254.pairingProd2(recursive_proof_part[0], PairingsBn254.P2(), recursive_proof_part[1], vk.g2_x);
         
         return valid;
+    }
+    
+    function reconstruct_recursive_public_input(
+        uint256 recursive_vks_root,
+        uint8 max_valid_index,
+        uint8[] memory recursive_vks_indexes,
+        uint256[] memory individual_vks_inputs,
+        uint256[16] memory subproofs_aggregated
+    ) internal pure returns (uint256 recursive_input, PairingsBn254.G1Point[2] memory reconstructed_g1s) {
+        assert(recursive_vks_indexes.length == individual_vks_inputs.length);
+        bytes memory concatenated = abi.encodePacked(recursive_vks_root);
+        uint8 index;
+        for (uint256 i = 0; i < recursive_vks_indexes.length; i++) {
+            index = recursive_vks_indexes[i];
+            assert(index <= max_valid_index);
+            concatenated = abi.encodePacked(concatenated, index);
+        }
+        uint256 input;
+        for (uint256 i = 0; i < recursive_vks_indexes.length; i++) {
+            input = individual_vks_inputs[i];
+            assert(input < PairingsBn254.r_mod);
+            concatenated = abi.encodePacked(concatenated, input);
+        }
+        
+        concatenated = abi.encodePacked(concatenated, subproofs_aggregated);
+        
+        bytes32 commitment = sha256(concatenated);
+        recursive_input = uint256(commitment) & RECURSIVE_CIRCUIT_INPUT_COMMITMENT_MASK;
+        
+        reconstructed_g1s[0] = PairingsBn254.new_g1_checked(
+            subproofs_aggregated[0] + (subproofs_aggregated[1] << LIMB_WIDTH) + (subproofs_aggregated[2] << 2*LIMB_WIDTH) + (subproofs_aggregated[3] << 3*LIMB_WIDTH),
+            subproofs_aggregated[4] + (subproofs_aggregated[5] << LIMB_WIDTH) + (subproofs_aggregated[6] << 2*LIMB_WIDTH) + (subproofs_aggregated[7] << 3*LIMB_WIDTH)
+        );
+        
+        reconstructed_g1s[1] = PairingsBn254.new_g1_checked(
+            subproofs_aggregated[8] + (subproofs_aggregated[9] << LIMB_WIDTH) + (subproofs_aggregated[10] << 2*LIMB_WIDTH) + (subproofs_aggregated[11] << 3*LIMB_WIDTH),
+            subproofs_aggregated[12] + (subproofs_aggregated[13] << LIMB_WIDTH) + (subproofs_aggregated[14] << 2*LIMB_WIDTH) + (subproofs_aggregated[15] << 3*LIMB_WIDTH)
+        );
+        
+        return (recursive_input, reconstructed_g1s);
     }
 }
 
@@ -1018,7 +1104,6 @@ contract KeyedVerifier is Plonk4VerifierWithAccessToDNext {
              0x22febda3c0c0632a56475b4214e5615e11e6dd3f96e6cea2854a87d4dacc5e55]
         );
     }
-
 
     function deserialize_proof(
         uint256[] memory public_inputs, 
@@ -1128,6 +1213,25 @@ contract KeyedVerifier is Plonk4VerifierWithAccessToDNext {
         Proof memory proof = deserialize_proof(public_inputs, serialized_proof);
 
         bool valid = verify(proof, vk);
+
+        return valid;
+    }  
+    
+    function verify_serialized_proof_with_recursion(
+        uint256[] memory public_inputs, 
+        uint256[] memory serialized_proof,
+        uint256 recursive_vks_root,
+        uint8 max_valid_index,
+        uint8[] memory recursive_vks_indexes,
+        uint256[] memory individual_vks_inputs,
+        uint256[16] memory subproofs_limbs
+    ) public view returns (bool) {
+        VerificationKey memory vk = get_verification_key();
+        require(vk.num_inputs == public_inputs.length);
+
+        Proof memory proof = deserialize_proof(public_inputs, serialized_proof);
+
+        bool valid = verify_recursive(proof, vk, recursive_vks_root, max_valid_index, recursive_vks_indexes, individual_vks_inputs, subproofs_limbs);
 
         return valid;
     }  

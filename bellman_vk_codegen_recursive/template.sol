@@ -447,8 +447,6 @@ contract Plonk4VerifierWithAccessToDNext {
         res.sub_assign(PairingsBn254.new_fr(1));
     }
     
-    event DebugEvent(bytes32);
-    
     function verify_at_z(
         PartialVerifierState memory state,
         Proof memory proof, 

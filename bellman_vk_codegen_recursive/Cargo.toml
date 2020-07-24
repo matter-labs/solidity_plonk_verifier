@@ -5,10 +5,10 @@ authors = ["Alex Vlasov <alex.m.vlasov@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-# bellman = { package = "bellman_ce", git = "https://github.com/matter-labs/bellman", branch = "circuit_description" }
-bellman = { package = "bellman_ce", path = "../../bellman" }
-# recursive_aggregation_circuit = {git = "https://github.com/matter-labs/recursive_aggregation_circuit"}
-recursive_aggregation_circuit = {path = "../../recursive_aggregation_circuit"}
+bellman = { package = "bellman_ce", git = "https://github.com/matter-labs/bellman", branch = "circuit_description" }
+# bellman = { package = "bellman_ce", path = "../../bellman" }
+recursive_aggregation_circuit = {git = "https://github.com/matter-labs/recursive_aggregation_circuit"}
+# recursive_aggregation_circuit = {path = "../../recursive_aggregation_circuit"}
 
 handlebars = "3.*"
 hex = "*"

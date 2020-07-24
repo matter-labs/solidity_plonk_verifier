@@ -74,6 +74,7 @@ dependencies = [
 [[package]]
 name = "bellman_ce"
 version = "0.3.2"
+source = "git+https://github.com/matter-labs/bellman?branch=circuit_description#2e63d7c0fa68580c342905e22ddc7e867ce42986"
 dependencies = [
  "bit-vec",
  "blake2s_const",
@@ -128,6 +129,7 @@ dependencies = [
 [[package]]
 name = "blake2s_const"
 version = "0.6.0"
+source = "git+https://github.com/matter-labs/bellman?branch=circuit_description#2e63d7c0fa68580c342905e22ddc7e867ce42986"
 dependencies = [
  "arrayref",
  "arrayvec 0.5.1",
@@ -441,6 +443,7 @@ dependencies = [
 [[package]]
 name = "franklin-crypto"
 version = "0.0.5"
+source = "git+https://github.com/matter-labs/franklin-crypto?branch=plonk_gadgets#614d4819abcdcbc1c4ec4377c87814620887d2f0"
 dependencies = [
  "bellman_ce",
  "bit-vec",
@@ -1251,6 +1254,7 @@ dependencies = [
 [[package]]
 name = "recursive_aggregation_circuit"
 version = "0.1.0"
+source = "git+https://github.com/matter-labs/recursive_aggregation_circuit#51816192262cf184ccb787e59cdb2ea62154e23c"
 dependencies = [
  "franklin-crypto",
  "hex",
