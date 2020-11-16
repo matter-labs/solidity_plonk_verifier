@@ -976,12 +976,35 @@ contract Plonk4VerifierWithAccessToDNext {
             return false;
         }
         
-        recursive_proof_part[0].point_add_assign(aggregated_g1s[0]);
-        recursive_proof_part[1].point_add_assign(aggregated_g1s[1]);
+        // aggregated_g1s = inner
+        // recursive_proof_part = outer
+        PairingsBn254.G1Point[2] memory combined = combine_inner_and_outer(aggregated_g1s, recursive_proof_part);
         
-        valid = PairingsBn254.pairingProd2(recursive_proof_part[0], PairingsBn254.P2(), recursive_proof_part[1], vk.g2_x);
+        valid = PairingsBn254.pairingProd2(combined[0], PairingsBn254.P2(), combined[1], vk.g2_x);
         
         return valid;
+    }
+
+    function combine_inner_and_outer(
+        PairingsBn254.G1Point[2] memory inner,
+        PairingsBn254.G1Point[2] memory outer
+    ) internal view returns (PairingsBn254.G1Point[2] memory result) {
+        // reuse the transcript primitive
+        TranscriptLibrary.Transcript memory transcript = TranscriptLibrary.new_transcript();
+        transcript.update_with_g1(inner[0]);
+        transcript.update_with_g1(inner[1]);
+        transcript.update_with_g1(outer[0]);
+        transcript.update_with_g1(outer[1]);
+        PairingsBn254.Fr memory challenge = transcript.get_challenge();
+        // 1 * inner + challenge * outer
+        result[0] = PairingsBn254.copy_g1(inner[0]);
+        result[1] = PairingsBn254.copy_g1(inner[1]);
+        PairingsBn254.G1Point memory tmp = outer[0].point_mul(challenge);
+        result[0].point_add_assign(tmp);
+        tmp = outer[1].point_mul(challenge);
+        result[1].point_add_assign(tmp);
+        
+        return result;
     }
     
     function reconstruct_recursive_public_input(
