@@ -326,6 +326,7 @@ contract Plonk4VerifierWithAccessToDNext {
 
     uint256 constant RECURSIVE_CIRCUIT_INPUT_COMMITMENT_MASK = 0x00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
     uint256 constant LIMB_WIDTH = 68;
+    uint256 constant LIMB_MAX_VALUE_PLUS_ONE = 1 << 68;
     
     struct VerificationKey {
         uint256 domain_size;
@@ -1033,6 +1034,10 @@ contract Plonk4VerifierWithAccessToDNext {
         
         bytes32 commitment = sha256(concatenated);
         recursive_input = uint256(commitment) & RECURSIVE_CIRCUIT_INPUT_COMMITMENT_MASK;
+
+        for (uint256 i = 0; i < subproofs_aggregated.length; i++) {
+            require(subproofs_aggregated[i] < LIMB_MAX_VALUE_PLUS_ONE, "overflow");
+        }
         
         reconstructed_g1s[0] = PairingsBn254.new_g1_checked(
             subproofs_aggregated[0] + (subproofs_aggregated[1] << LIMB_WIDTH) + (subproofs_aggregated[2] << 2*LIMB_WIDTH) + (subproofs_aggregated[3] << 3*LIMB_WIDTH),
