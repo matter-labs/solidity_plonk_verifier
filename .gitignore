@@ -1,2 +1,3 @@
 /target
 Cargo.lock
+hardhat/package-lock.json
