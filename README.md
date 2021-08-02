@@ -1,6 +1,11 @@
 # Code Generator for Solidity Verifier
 ## Generate
-` cargo test -- --nocapture test_render_verification_key` 
+
+`cargo run -- ./block_vk_20_keccak.key`
+
+Write solidity file into custom directory
+
+`cargo run -- ./block_vk_20_keccak.key ./path/to/directory`
 
 ## Test
 Enter hardhat director 

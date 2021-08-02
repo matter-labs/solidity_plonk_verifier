@@ -1,14 +1,9 @@
 [package]
-name = "handlebars"
+name = "solidity_plonk_verifier"
 version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-handlebars = "*"
-serde = "*"
-serde_derive = "*"
-serde_json = "*"
-franklin_crypto = {package = "franklin-crypto", path = "../../matter-labs/franklin-crypto"}
-hex = "*"
+codegen = {path = "./codegen"}

@@ -1,13 +1,27 @@
 use handlebars::*;
 // use serde_json::{Map, Serializer};
-use franklin_crypto::bellman::{CurveAffine, Engine, PrimeField, PrimeFieldRepr, pairing::bn256::{Bn256, Fq, Fr, Fq2}, plonk::{better_better_cs::{cs::Circuit, setup::VerificationKey}, domains::Domain}};
+use franklin_crypto::bellman::{CurveAffine, Engine, PrimeField, PrimeFieldRepr, SynthesisError, pairing::bn256::{Bn256, Fq, Fr, Fq2}, plonk::{better_better_cs::{cs::{Circuit, ConstraintSystem, Width4MainGateWithDNext}, setup::VerificationKey}, domains::Domain}};
 use serde_json::Map;
+use std::io::{Read, Write};
+
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
 
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 
+
+const TEMPLATE_FILE_PATH: &str = "./template/verifier.sol";
+const VERIFICATION_KEY_FILE_NAME: &str = "VerificationKey.sol";
+
+pub struct DummyCircuitWithRescueCustomGate;
+
+impl<E: Engine> Circuit<E> for DummyCircuitWithRescueCustomGate {
+    type MainGate = Width4MainGateWithDNext;
+    fn synthesize<CS: ConstraintSystem<E>>(&self, cs: &mut CS) -> Result<(), SynthesisError> {
+        todo!()
+    }
+}
 
 
 pub struct FieldElement(Fr);
@@ -129,7 +143,34 @@ impl MapWrapper{
     }
 }
 
-pub fn render_verification_key<C: Circuit<Bn256>>(vk: &VerificationKey<Bn256, C>, render_to_path: &str) {
+/// Read Verification Key from `vk_path`, render solidity verifier 
+/// and write its contents into file in `output_path` 
+pub fn generate(vk_path: &str, output_path: &str, template_file_path: Option<&str>){  
+    let mut reader = std::io::BufReader::new(
+        std::fs::File::open(vk_path).expect("should open file"),
+    );
+    let mut final_output_path = String::new();
+    final_output_path.push_str(output_path);
+    final_output_path.push_str("/");
+    final_output_path.push_str(VERIFICATION_KEY_FILE_NAME);
+    println!("final output {}", final_output_path);
+
+    let mut writer = std::io::BufWriter::new(
+        std::fs::File::create(final_output_path).expect("should open output file")
+    );
+
+    let template_file_path = if let Some(path) = template_file_path{
+        path
+    }else{
+        TEMPLATE_FILE_PATH
+    };
+
+
+    render_verification_key::<DummyCircuitWithRescueCustomGate, _, _>(&template_file_path, &mut reader, &mut writer)
+}
+
+fn render_verification_key<C: Circuit<Bn256>, R: Read, W: Write>(template_file_path: &str, reader: &mut R, writer: &mut W) {
+    let vk = VerificationKey::<Bn256, DummyCircuitWithRescueCustomGate>::read(reader).expect("parsed vk");
 
     let mut map = MapWrapper::new();
     let mut handlebars = Handlebars::new();
@@ -201,15 +242,12 @@ pub fn render_verification_key<C: Circuit<Bn256>>(vk: &VerificationKey<Bn256, C>
 
     // register template from a file and assign a name to it
     handlebars
-        .register_template_file("contract", "./template/verifier.sol")
+        .register_template_file("contract", template_file_path)
         .expect("must read the template");
 
-    let mut writer =
-        std::io::BufWriter::with_capacity(1 << 24, std::fs::File::create(render_to_path).unwrap());
 
     let rendered = handlebars.render("contract", &map.inner).unwrap();
-
-    use std::io::Write;
+    
     writer
         .write(rendered.as_bytes())
         .expect("must write to file");
@@ -220,23 +258,8 @@ mod tests {
     use super::*;
     use franklin_crypto::bellman::{Engine, SynthesisError, pairing::bn256::*, plonk::better_better_cs::{cs::{Circuit, ConstraintSystem, Width4MainGateWithDNext}}};
 
-    pub struct TestCircuit;
-
-    impl<E: Engine> Circuit<E> for TestCircuit {
-        type MainGate = Width4MainGateWithDNext;
-        fn synthesize<CS: ConstraintSystem<E>>(&self, cs: &mut CS) -> Result<(), SynthesisError> {
-            todo!()
-        }
-    }
-
     #[test]
     fn test_render_verification_key() {
-        let mut reader = std::io::BufReader::with_capacity(
-            1 << 24,
-            std::fs::File::open("./block_vk_20_keccak.key").unwrap(),
-        );
-
-        let vk = VerificationKey::<Bn256, TestCircuit>::read(&mut reader).expect("parsed vk");
-        render_verification_key(&vk, "./hardhat/contracts/VerificationKey.sol");
+        generate("./../block_vk_20_keccak.key", "./../hardhat/contracts", None);
     }
 }
