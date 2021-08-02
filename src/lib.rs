@@ -38,7 +38,7 @@ impl Serialize for FieldElement {
 fn field_element_to_hex<F: PrimeField>(el: &F) -> String {
     let mut buf = [0u8; 32];
     el.into_repr()
-        .write_le(&mut buf[..])
+        .write_be(&mut buf[..])
         .expect("consume buffer");
 
     let mut result = String::from("0x");
@@ -95,18 +95,18 @@ impl Serialize for G2Point {
     where
         S: Serializer,
     {
-        // 3 is the number of fields in the struct.
+        
         let mut state = serializer.serialize_struct("G2Point", 2)?;
         let mut init_str = String::from("PairingsBn254.new_g2");
-
+        // Encoding of field elements is: X[0] * z + X[1]
         init_str.push_str("([");
-        init_str.push_str(&field_element_to_hex(&self.x.c0));
-        init_str.push_str(",");
         init_str.push_str(&field_element_to_hex(&self.x.c1));
-        init_str.push_str("],[");
-        init_str.push_str(&field_element_to_hex(&self.y.c0));
         init_str.push_str(",");
+        init_str.push_str(&field_element_to_hex(&self.x.c0));
+        init_str.push_str("],[");
         init_str.push_str(&field_element_to_hex(&self.y.c1));
+        init_str.push_str(",");
+        init_str.push_str(&field_element_to_hex(&self.y.c0));
         init_str.push_str("])");
         state.serialize_field("g2", &init_str)?;
         state.end()
@@ -145,9 +145,11 @@ pub fn render_verification_key<C: Circuit<Bn256>>(vk: &VerificationKey<Bn256, C>
     map.insert("DNEXT_INDEX", vk.state_width-1); 
     map.insert("NUM_G2_ELS", vk.g2_elements.len());     
     map.insert("NUM_LOOKUP_TABLES", vk.lookup_tables_commitments.len()); 
-    map.insert("SERIALIZED_PROOF_LENGTH", 0); 
+    map.insert("SERIALIZED_PROOF_LENGTH", 44);  // TODO calculat length
+    map.insert("NUM_ALPHA_CHALLENGES", 8);  // TODO
 
     // domain
+    map.insert("num_inputs".into(), vk.num_inputs);
     let domain: Domain<Fr> = Domain::new_for_size(vk.n as u64).expect("a domain");
     map.insert("domain_size".into(), domain.size);
     map.insert("domain_generator".into(), FieldElement::from(domain.generator));
@@ -231,8 +233,7 @@ mod tests {
     fn test_render_verification_key() {
         let mut reader = std::io::BufReader::with_capacity(
             1 << 24,
-            // std::fs::File::open("./xor_vk.key").unwrap()
-            std::fs::File::open("./vk_17.key").unwrap(),
+            std::fs::File::open("./block_vk_20_keccak.key").unwrap(),
         );
 
         let vk = VerificationKey::<Bn256, TestCircuit>::read(&mut reader).expect("parsed vk");
