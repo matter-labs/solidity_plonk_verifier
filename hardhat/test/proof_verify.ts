@@ -21,7 +21,7 @@ describe("Verifier", function () {
       throw new Error(`proof file not found! ${proofFile}`);
       return;
     }    
-    proof = Proof.read_from_file(DEFAULT_PROOF_FILE);
+    proof = Proof.read_from_file(proofFile);
     let factory = await ethers.getContractFactory("Verifier");
     contract = await factory.deploy();
     await contract.deployed();

@@ -1,25 +1,55 @@
 # Code Generator for Solidity Verifier
-## Generate
+## Install code generator tool
+```
+git clone ssh://git@github.com/matter-labs/solidity_plonk_verifier
+cd solidity_plonk_verifier
+cargo build
+```
 
-`cargo run -- ./block_vk_20_keccak.key`
+## Options
+```bash
+./target/debug/solidity_plonk_verifier --help
+solidity_plonk_verifier 0.1.0
 
-Write solidity file into custom directory
+USAGE:
+    solidity_plonk_verifier [OPTIONS] --verification-key <verification-key>
 
-`cargo run -- ./block_vk_20_keccak.key ./path/to/directory`
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
 
-## Test
-Enter hardhat director 
+OPTIONS:
+        --main-gate <main-gate>
+            Type of main gate [std_width4 | selector_optimized_width4] [default: std_width4]
+
+        --output <output>                        Output directory [default: ./hardhat/contracts]
+        --verification-key <verification-key>    Path to verification key(required)
+```
+
+## Generate for Standard Width4 Main Gate
+
+### Generate
+`./target/debug/solidity_plonk_verifier --verification-key ./block_vk_20_keccak.key`
+
+### Test
+Enter hardhat directory
 
 `cd hardhat/`
 
-run test with default proof file
+run test 
 
-`hardhat test`
+`PROOF_FILE=./block_proof_20_keccak.proof hardhat test`
 
-run test with geth dev mode
+## Generate for Selector Optimized Width4 Main Gate
 
-`hardhat test --network geth`
+### Generate
+`./target/debug/solidity_plonk_verifier --verification-key ./selector_optimized_vk_keccak.key --main-gate selector_optimized_width4`
 
-run test with custom proof file
+### Test
+Enter hardhat directory
 
-`PROOF_FILE=./../custom.proof hardhat test --network geth`
+`cd hardhat/`
+
+run test 
+
+`PROOF_FILE=./selector_optimized_proof_keccak.proof hardhat test`

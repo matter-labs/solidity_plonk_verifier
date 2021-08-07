@@ -1,19 +1,23 @@
 pragma solidity >0.7;
 
 uint256 constant STATE_WIDTH = 4;
-uint256 constant NUM_SELECTORS = 7;
+uint256 constant NUM_MAIN_GATE_SELECTORS = 8;
 uint256 constant NUM_GATES = 2;
 uint256 constant NUM_G2_ELS = 2;
 uint256 constant NUM_LOOKUP_TABLES = 4;
 uint256 constant SERIALIZED_PROOF_LENGTH = 44;
 uint256 constant NUM_ALPHA_CHALLENGES = 8;
+uint256 constant MAIN_GATE_AB_COEFF_IDX = 4;
+uint256 constant MAIN_GATE_AC_COEFF_IDX = 5;
+uint256 constant CONSTANT_TERM_COEFF_INDEX = 6;
+uint256 constant D_NEXT_TERM_COEFF_INDEX = 7;
 
 struct VerificationKey {
     uint256 domain_size;
     uint256 num_inputs;
     PairingsBn254.Fr omega;
     PairingsBn254.G1Point[NUM_GATES] gate_selectors_commitments;
-    PairingsBn254.G1Point[NUM_SELECTORS] gate_setup_commitments; // STATE_WIDTH for witness + multiplication + constant
+    PairingsBn254.G1Point[NUM_MAIN_GATE_SELECTORS] gate_setup_commitments; // STATE_WIDTH for witness + multiplication + constant
     PairingsBn254.G1Point[STATE_WIDTH] permutation_commitments;
     uint256 total_lookup_entries_length;
     PairingsBn254.G1Point lookup_selector_commitment;
@@ -224,7 +228,7 @@ contract Plonk4VerifierWithAccessToDNext {
                 return false;
         }
         // TODO use constants here after putting all codebase into single file
-        require(vk.gate_setup_commitments.length == NUM_SELECTORS);
+        require(vk.gate_setup_commitments.length == NUM_MAIN_GATE_SELECTORS);
         require(proof.state_polys_openings_at_z.length == STATE_WIDTH);
         require(proof.state_polys_openings_at_z_omega.length == 1); // TODO
 
@@ -416,19 +420,25 @@ contract Plonk4VerifierWithAccessToDNext {
         scaled = vk.gate_setup_commitments[3].point_mul(proof.state_polys_openings_at_z[3]);
         result.point_add_assign(scaled);
 
-        // Q_m* A*B
+        // Q_m* A*B or Q_ab*A*B
         PairingsBn254.Fr memory t = proof.state_polys_openings_at_z[0].copy();
         t.mul_assign(proof.state_polys_openings_at_z[1]);
+        scaled = vk.gate_setup_commitments[MAIN_GATE_AB_COEFF_IDX].point_mul(t);
+        result.point_add_assign(scaled);
 
-        scaled = vk.gate_setup_commitments[4].point_mul(t);
+        // Q_AC* A*C
+        t = proof.state_polys_openings_at_z[0].copy();
+        t.mul_assign(proof.state_polys_openings_at_z[2]);
+        scaled = vk.gate_setup_commitments[MAIN_GATE_AC_COEFF_IDX].point_mul(t);
+        
         result.point_add_assign(scaled);
 
 
         // Q_const
-        result.point_add_assign(vk.gate_setup_commitments[5]);
+        result.point_add_assign(vk.gate_setup_commitments[CONSTANT_TERM_COEFF_INDEX]);
 
         // Q_dNext * D_next
-        scaled = vk.gate_setup_commitments[6].point_mul(proof.state_polys_openings_at_z_omega[0]);
+        scaled = vk.gate_setup_commitments[D_NEXT_TERM_COEFF_INDEX].point_mul(proof.state_polys_openings_at_z_omega[0]);
         result.point_add_assign(scaled);
 
         result.point_mul_assign(proof.gate_selectors_openings_at_z[0]);        
@@ -483,7 +493,7 @@ contract Plonk4VerifierWithAccessToDNext {
 
     }
 
-     function rescue_custom_gate_linearization_contribution(VerificationKey memory vk, Proof memory proof, PartialVerifierState memory state) public view returns(PairingsBn254.G1Point memory result){        
+    function rescue_custom_gate_linearization_contribution(VerificationKey memory vk, Proof memory proof, PartialVerifierState memory state) public view returns(PairingsBn254.G1Point memory result){        
         // now proceed with rescue custom gate, it only involves with selectors
         // we need 3 challenges alpha alpha^2 alpha^3        
         PairingsBn254.Fr memory t;
@@ -703,34 +713,35 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
 
     function get_verification_key() internal pure returns(VerificationKey memory vk){
         vk.num_inputs = 1;
-        vk.domain_size = 256;
-        vk.omega = PairingsBn254.new_fr(0x1058a83d529be585820b96ff0a13f2dbd8675a9e5dd2336a6692cc1e5a526c81);
+        vk.domain_size = 512;
+        vk.omega = PairingsBn254.new_fr(0x0dd30b9ad8c173555d2a33029bc807ac165b61281e9054a173af7ff4e4fc88fc);
         // coefficients
-        vk.gate_setup_commitments[0] = PairingsBn254.new_g1(0x05f5cabc4eab14cfabee1334ef7f33a66259cc9fd07af862308d5c41765adb4b,0x128a103fbe66c8ff697182c0963d963208b55a5a53ddeab9b4bc09dc2a68a9cc);
-        vk.gate_setup_commitments[1] = PairingsBn254.new_g1(0x0d9980170c334c107e6ce4d66bbc4d23bbcdc97c020b1e1c3f6e04c6c663d2c2,0x0968205845091ceaf3f863b1613fbdf7ce9a87ccfd97f22011679e6350384419);
-        vk.gate_setup_commitments[2] = PairingsBn254.new_g1(0x0c84a19b149a1612cb042ad86382b9e94367c0add60d07e12399999e7db09efe,0x1e02f70c44c9bfb7bf2164cee2ab4813bcb9be56eb432e2e9dfffffe196d846d);
-        vk.gate_setup_commitments[3] = PairingsBn254.new_g1(0x1eb3599506a41a7d62e1f7438d6732fbb9d1eda7b9c7a0213eca63c9334ac5a9,0x23563d9f429908d8ea80bffa642840fb081936d45b388bafc504d9b1e5b1c410);
-        vk.gate_setup_commitments[4] = PairingsBn254.new_g1(0x0000000000000000000000000000000000000000000000000000000000000000,0x0000000000000000000000000000000000000000000000000000000000000001);
-        vk.gate_setup_commitments[5] = PairingsBn254.new_g1(0x063e8dac7ee3ee6a4569fd53b416fe17f8f10de8c435c336e5a1cf2e02643200,0x1d4c1781b78f926d55f89ef72abb96bee350ce60ddc684f5a02d87c5f4cdf943);
-        vk.gate_setup_commitments[6] = PairingsBn254.new_g1(0x0000000000000000000000000000000000000000000000000000000000000000,0x0000000000000000000000000000000000000000000000000000000000000001);
+        vk.gate_setup_commitments[0] = PairingsBn254.new_g1(0x2c6005e59e769e19bb2f46bf2d9f65283a4b1c5c34aa2349862e4f1bb63ee91c,0x123ea7b388558f1d1b4c2213e9acff6476fafc7702f9a5b6855b312e34ddecec);
+        vk.gate_setup_commitments[1] = PairingsBn254.new_g1(0x1bf67502fbb626a425575c04ba2d7e6001d0c79b78432f1618d830cdda31daf1,0x14b48b1ca4aa965a1b3b295f75db9dad001613638a2b8e94e1194ddc1dd3cdb6);
+        vk.gate_setup_commitments[2] = PairingsBn254.new_g1(0x28a1c86f2bb7036a1e20477cb9bfb99e194344b229e0c1be5ca14d52d3d7d78b,0x2a870bd7c11012783e849c1ae6d24a2dac8ad38bb6ef4cbb25c31c001a2b6dcc);
+        vk.gate_setup_commitments[3] = PairingsBn254.new_g1(0x2a81ec592f22c02e74a9885ff531b018274fafa7fa19dee1234f5191c5dce24b,0x27a3d4a6bfb3548d86de261c1a4d7a6826246cb9a5a17b252d70588cf9363510);
+        vk.gate_setup_commitments[4] = PairingsBn254.new_g1(0x183d7488f5134ca26b0ce1e9fca43aeaf5457ecb9ca9c3bcd0751e21d0c10221,0x047c91abc16f5af01c6950aa55996c9929ad6bdf5b4228727495ee71eb2fc6c0);
+        vk.gate_setup_commitments[5] = PairingsBn254.new_g1(0x1bba345553aca8b09d89bd9e534bb29ea6fc715a2f8c62fd5e3ffa6b64f7823b,0x2c26992dbb24abf84fae130447df736b372b93c46ac93f33a7b0c6d0477e1afa);
+        vk.gate_setup_commitments[6] = PairingsBn254.new_g1(0x21b50c44947711561c80a88dd1bd2f12aa28f0d88df6d2060915179e74300fa3,0x0cd866091da9fd1bed85b8c85ba701ad01ed97142d1df1420312ae30090fe6c7);
+        vk.gate_setup_commitments[7] = PairingsBn254.new_g1(0x0000000000000000000000000000000000000000000000000000000000000000,0x0000000000000000000000000000000000000000000000000000000000000001);
         // gate selectors
-        vk.gate_selectors_commitments[0] = PairingsBn254.new_g1(0x0b487eb34c8480ea506f5c6c25857155d61d7f9824b60bc80e1a415a5bcf247f,0x07ea0d0d0df9dbcc944e9341a5bb49ae796d9dc9d7ca1c032b53784715b946db);
-        vk.gate_selectors_commitments[1] = PairingsBn254.new_g1(0x0fa66faa0b9ea782eb400175ac9f0c05f0de64332eec54a87cd20db4540baec2,0x07dea33d314c690c4bd4b21deda1a44b9f8dd87e539024622768c2f8b8bdabe1);
+        vk.gate_selectors_commitments[0] = PairingsBn254.new_g1(0x1c4922a27df7b59b2b60afa704989db3b92793468239419f25058eeee54951b0,0x07566b3fb05764af536bb031d861eb5208f873e5622f9116afc209a70d521816);
+        vk.gate_selectors_commitments[1] = PairingsBn254.new_g1(0x28ddac5a81f3045ba660e4c95962500814a130c77ac5f815d747e9a50ad125cf,0x2e6ad370b93c4de8b3211cf438f5a5808be895003d40d5346109b6d69d2a55c9);
         // permutation
-        vk.permutation_commitments[0] = PairingsBn254.new_g1(0x120482c52e31d2373f9b2dc80a47e68f035e278d220fa8a89d0c81f133343953,0x02928a78ea2e1a943e9220b7e288fd48a561263f8e5f94518f21aaa43781ceac);
-        vk.permutation_commitments[1] = PairingsBn254.new_g1(0x1dfad2c4d60704bcf6af0abd9cce09151f063c4b52200c268e470c6a6c93cbca,0x08b28dd6ca14d7c33e078fe0f332a9a4d95ac8df171355de9e69930aec02b5dc);
-        vk.permutation_commitments[2] = PairingsBn254.new_g1(0x0935a4fd6ab67925929661cf2d2e814f87f589ee6234cb9675ecc2d897f1b338,0x1032ccc41c047413fce4a847ba7e51e4a2ea406d89a88d480c5f0efaf6c8c89a);
-        vk.permutation_commitments[3] = PairingsBn254.new_g1(0x0eafaea3af7d1fadb2138db1b991af5d2218f6892714fd019898c7e1a43ecfe8,0x28fb17eda285ed74cc9771d62fad22ab459bbb0a4968c489972aca8b7e618fcb);
+        vk.permutation_commitments[0] = PairingsBn254.new_g1(0x08db50f68ace5a40979b76fd3c9e5fcfb2c769f33c2da8c068bfe142c51b74f0,0x03c4493634b2860db185269b3a67a0629d67a9f25e12e83702c649fa2b1c5be9);
+        vk.permutation_commitments[1] = PairingsBn254.new_g1(0x1dbe246e6087c94e6525ffe99880530f55ae6c17c6157d07275f8dddbd9ab651,0x17d13a8038919d0f75eb7beb50dfaf1a3b1096954b7a3835a22b14484272dcf8);
+        vk.permutation_commitments[2] = PairingsBn254.new_g1(0x218de33ba439143345ea15348362e6cbaefbd4e4de9ae3d99253f182ae0892e9,0x03a623176bfb207d053215c71078ba235a363c7607349ab9b8ba6060c30745b6);
+        vk.permutation_commitments[3] = PairingsBn254.new_g1(0x1fb07394c8e800ed6f5193622a1574df742bb3f95e55d2e0dfcb5b80c33f3b3f,0x2e2ab2002bec17e39e49db8cafc5e3d0b16abce85ceb7332f69121b4bf7c30c6);
         vk.total_lookup_entries_length = 1;
         
         // lookup table commitments
         vk.total_lookup_entries_length = 1;
-        vk.lookup_selector_commitment = PairingsBn254.new_g1(0x155201a564e721b1f5c06315ad4e24eaad3cbdd6197b19cd903fe85613080f86,0x12fb201bc896572ac14357e2601f5118636f1eeb7b89c177ac940aac3b5253ec);
-        vk.lookup_tables_commitments[0] = PairingsBn254.new_g1(0x1cb0e2ae4d52743898d94d7f1729bd0d3357ba035cdb6b3af7ebff9159f8f297,0x15ee595227c9e0f7a487ddb8072d5ea3cfd058bc569211c3546bc0e80051553f);
-        vk.lookup_tables_commitments[1] = PairingsBn254.new_g1(0x13e4ab94c03a5a29719930c1361d854e244cf918f1e29cb031303f4a13b71977,0x0f792ef4c6c8746c97be61ed9b20f31ba2dec3bd5c91a2d9a4a586f19af3a07c);
-        vk.lookup_tables_commitments[2] = PairingsBn254.new_g1(0x1c9e69bd2b04240ebe44fb23d67c596fce4a1336109fdce38c2f184a63cd8acc,0x1cbd3e72bdbce827227e503690b10be9365ae760e9d2babde5ba81edf12f8206);
-        vk.lookup_tables_commitments[3] = PairingsBn254.new_g1(0x2a0d46339fbf72104df6a241b53a957602b1a16f6e3b9f89bf3e4c4645df823c,0x11a601d7b2eee4b7885f34c9873426ba1263f38eae2e0351d653b8b1ba9c67f6);
-        vk.lookup_table_type_commitment = PairingsBn254.new_g1(0x1a70e43f18b18d686807c2b1c6471cd949dd251b48090bca443d86b97afae951,0x0e6e23ad15a1bd851b228788ae4a03bf25bda39ede6d5a92d501a8402a0dfe43);
+        vk.lookup_selector_commitment = PairingsBn254.new_g1(0x28a33ec6cc7ab335c0c3c742d845bb463132b5e9906b556e3a6500d61d7b4086,0x2de7bdeb5b21b1e11fdae54a178c71086944a0865555be0b7518f665b0466b89);
+        vk.lookup_tables_commitments[0] = PairingsBn254.new_g1(0x1c779ae9c66f7d24ce668c81f76279bc4452db86728cfc7b3aa7f6bda85fa202,0x0060b135f9ad55c6f7abc67078f87cdb776104ef7615e308ad91318f90039273);
+        vk.lookup_tables_commitments[1] = PairingsBn254.new_g1(0x132b42d5ecd2158fd2948bcf6aba945c2cf11e37b88addf62d365174a5044398,0x01210af2dee67284d11e5d2a8559586b8d71a40f979a610df6017ad44d9d17d6);
+        vk.lookup_tables_commitments[2] = PairingsBn254.new_g1(0x0c891de5d6b625598403ed0854a950edb9c0d3269713ee7366653e799e08fdfa,0x1ac193ae49c15a812b9098d5369b93922a02963243c4cbfa0e39e604b5c2fe38);
+        vk.lookup_tables_commitments[3] = PairingsBn254.new_g1(0x01b6d78ba0bd2fccb76fae7462799fd9c426fc76dad17fee6be9b090743dd313,0x15afbd8cd80dc59a3d0252253ef05a482b9d4fc02bec564f1018f41d00620d6a);
+        vk.lookup_table_type_commitment = PairingsBn254.new_g1(0x1e1457a85814242ed4189182d7ca84cdcf8d07b091b2523dbdc19d2c0192c428,0x08e85e5a2c69c8616e18a0cf411837e54e9c9c1c0afd8a86fccaaaf6910efee8);
         
         // non residues
         vk.non_residues[0] = PairingsBn254.new_fr(0x0000000000000000000000000000000000000000000000000000000000000005);
@@ -739,7 +750,7 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
         
         // g2 elements
         vk.g2_elements[0] = PairingsBn254.new_g2([0x198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2,0x1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed],[0x090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b,0x12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa]);
-        vk.g2_elements[1] = PairingsBn254.new_g2([0x260e01b251f6f1c7e7ff4e580791dee8ea51d87a358e038b4efe30fac09383c1,0x0118c4d5b837bcc2bc89b5b398b5974e9f5944073b32078b7e231fec938883b0],[0x04fc6369f7110fe3d25156c1bb9a72859cf2a04641f99ba4ee413c80da6a5fe4,0x22febda3c0c0632a56475b4214e5615e11e6dd3f96e6cea2854a87d4dacc5e55]);
+        vk.g2_elements[1] = PairingsBn254.new_g2([0x12740934ba9615b77b6a49b06fcce83ce90d67b1d0e2a530069e3a7306569a91,0x116da8c89a0d090f3d8644ada33a5f1c8013ba7204aeca62d66d931b99afe6e7],[0x25222d9816e5f86b4a7dedd00d04acc5c979c18bd22b834ea8c6d07c0ba441db,0x076441042e77b6309644b56251f059cf14befc72ac8a6157d30924e58dc4c172]);
     }
 
 

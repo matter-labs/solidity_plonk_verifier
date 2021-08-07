@@ -1,16 +1,34 @@
-use codegen::generate;
+use codegen::{generate, MainGateType};
+use std::path::PathBuf;
+use structopt::StructOpt;
 
-const DEFAULT_OUTPUT_FILE: &str  = "./hardhat/contracts";
+const DEFAULT_OUTPUT_FILE: &str = "./hardhat/contracts";
+const TEMPLATE_FILE_PATH: &str = "./codegen/template/verifier.sol";
+
+#[derive(StructOpt, Debug)]
+pub struct Opts {
+    /// Path to verification key(required)
+    #[structopt(long, parse(from_os_str))]
+    verification_key: PathBuf,
+    /// Output directory
+    #[structopt(long, parse(from_os_str), default_value = DEFAULT_OUTPUT_FILE)]
+    output: PathBuf,
+    /// Type of main gate [std_width4 | selector_optimized_width4]
+    #[structopt(long, default_value = "std_width4")]
+    main_gate: MainGateType,
+}
+
 fn main() {
-    let vk_file_path =std::env::args().nth(1).expect("should provide verification key path");
-    let output_path = match std::env::args().nth(2){
-        Some(path) => path.to_string(),
-        None => DEFAULT_OUTPUT_FILE.to_string(),
-    };
+    let opts = Opts::from_args();    
+    println!("{:#?}", opts);
 
-    let template_file_path = "./codegen/template/verifier.sol";
+    let Opts{
+        verification_key,
+        output,
+        main_gate,
+    } = opts;
 
-    generate(&vk_file_path, &output_path, Some(template_file_path)); 
-
-    println!("Verifier saved into {}", output_path);
+    generate(main_gate, verification_key, output.clone(), Some(TEMPLATE_FILE_PATH));
+    
+    eprintln!("Success!");
 }

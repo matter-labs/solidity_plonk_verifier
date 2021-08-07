@@ -7,3 +7,4 @@ edition = "2018"
 
 [dependencies]
 codegen = {path = "./codegen"}
+structopt = "0.3"
