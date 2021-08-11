@@ -1,4 +1,4 @@
-use codegen::{generate, MainGateType};
+use codegen::generate;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -13,22 +13,18 @@ pub struct Opts {
     /// Output directory
     #[structopt(long, parse(from_os_str), default_value = DEFAULT_OUTPUT_FILE)]
     output: PathBuf,
-    /// Type of main gate [std_width4 | selector_optimized_width4]
-    #[structopt(long, default_value = "std_width4")]
-    main_gate: MainGateType,
 }
 
 fn main() {
-    let opts = Opts::from_args();    
+    let opts = Opts::from_args();
     println!("{:#?}", opts);
 
-    let Opts{
+    let Opts {
         verification_key,
         output,
-        main_gate,
     } = opts;
 
-    generate(main_gate, verification_key, output.clone(), Some(TEMPLATE_FILE_PATH));
-    
+    generate(verification_key, output.clone(), Some(TEMPLATE_FILE_PATH));
+
     eprintln!("Success!");
 }
