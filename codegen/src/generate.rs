@@ -2,139 +2,117 @@ use franklin_crypto::bellman::plonk::better_better_cs::gates::selector_optimized
 use franklin_crypto::bellman::{
     pairing::bn256::{Bn256, Fr},
     plonk::{
-        better_better_cs::{
-            cs::{Circuit, Width4MainGateWithDNext},
-            setup::VerificationKey,
-        },
+        better_better_cs::{cs::Width4MainGateWithDNext, setup::VerificationKey},
         domains::Domain,
     },
     CurveAffine, Engine,
 };
 use handlebars::*;
 use serde_json::Map;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use serde::ser::Serialize;
 
 use crate::{
-    circuits::{DummyCircuit, SelectorOptimizedDummyCircuit},
+    circuits::DummyCircuit,
     serialize::{FieldElement, G1Point, G2Point},
 };
 
-const TEMPLATE_FILE_PATH: &str = "./template/verifier.sol";
-const VERIFICATION_KEY_FILE_NAME: &str = "VerificationKey.sol";
-
-#[derive(Clone, Debug)]
 pub enum MainGateType {
     Standard,
     SelectorOptimized,
 }
 
-#[derive(Clone, Debug)]
-pub struct UnknownMainGate;
+const TEMPLATE_FILE_PATH: &str = "./template/verifier.sol";
+const SOLIDITY_VERIFIER_FILE_NAME: &str = "VerificationKey.sol";
 
-impl ToString for UnknownMainGate {
-    fn to_string(&self) -> String {
-        String::from("Unkown main gate! ")
-    }
+struct TemplateVars {
+    num_gates: usize,
+    has_rescue_custom_gate: bool,
+    has_lookup: bool,
+    is_selector_optimized_main_gate: bool,
+    num_main_gate_selectors: usize,
+    ab_coeff_idx: usize,
+    ac_coeff_idx: usize,
+    constant_coeff_idx: usize,
+    d_next_coeff_idx: usize,
 }
 
-impl FromStr for MainGateType {
-    type Err = UnknownMainGate;
+pub fn generate(vk_path: PathBuf, mut output_path: PathBuf, template_file_path: Option<&str>) {
+    let mut reader = std::fs::File::open(vk_path).expect("vk file");
+    output_path.push(SOLIDITY_VERIFIER_FILE_NAME);
+    let mut writer = std::fs::File::create(output_path).expect("output file");
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "std_width4" {
-            return Ok(Self::Standard);
-        } else if s == "selector_optimized_width4" {
-            return Ok(Self::SelectorOptimized);
-        } else {
-            Err(UnknownMainGate)
-        }
-    }
-}
-/// Reads a VerificationKey from a file that belongs to a circuit
-/// which declares a standard width4 or selector optimized main gate
-/// and writes rendered solidity file into a file in `output_path`
-pub fn generate(
-    main_gate_type: MainGateType,
-    vk_path: PathBuf,
-    output_path: PathBuf,
-    template_file_path: Option<&str>,
-) {
-    match main_gate_type {
-        MainGateType::Standard => {
-            inner_generate::<DummyCircuit<Bn256>>(vk_path, output_path, template_file_path)
-        }
-        MainGateType::SelectorOptimized => inner_generate::<SelectorOptimizedDummyCircuit>(
-            vk_path,
-            output_path,
-            template_file_path,
-        ),
-    }
-}
+    let vk = VerificationKey::<Bn256, DummyCircuit>::read(&mut reader).expect("read buffer");
+    // we know from the fact that vk belongs to a
+    // - standart main gate when there are 7 selectors
+    // - selector optimized main gate when there are 8 selectors
+    let num_selectors_of_main_gate = vk.gate_setup_commitments.len();
+    let main_gate = if num_selectors_of_main_gate == 7 {
+        MainGateType::Standard
+    } else if num_selectors_of_main_gate == 8 {
+        MainGateType::SelectorOptimized
+    } else {
+        unimplemented!()
+    };
 
-struct MapWrapper {
-    inner: Map<String, JsonValue>,
-}
-impl MapWrapper {
-    fn new() -> Self {
-        Self { inner: Map::new() }
-    }
+    let num_gates = if vk.gate_selectors_commitments.len() == 0 {
+        1
+    } else {
+        vk.gate_selectors_commitments.len()
+    };
 
-    fn insert<T: Serialize>(&mut self, key: &str, value: T) -> Option<JsonValue> {
-        self.inner.insert(key.into(), to_json(value))
-    }
-}
+    let has_rescue_custom_gate = if num_gates > 1 { true } else { false };
 
-const EXISTING_GATES: [GateType; 3] = [
-    GateType::MainGate("main gate of width 4 with D_next"),
-    GateType::MainGate("main gate of width 4 with D_next and selector optimization"),
-    GateType::CustomGate("Alpha=5 custom gate for Rescue/Poseidon"),
-];
+    let has_lookup = if vk.total_lookup_entries_length > 0 {
+        assert!(vk.lookup_selector_commitment.is_some());
+        assert!(vk.lookup_tables_commitments.len() > 0);
+        assert!(vk.lookup_table_type_commitment.is_some());
+        true
+    } else {
+        assert!(vk.lookup_selector_commitment.is_none());
+        assert!(vk.lookup_tables_commitments.len() == 0);
+        assert!(vk.lookup_table_type_commitment.is_none());
+        false
+    };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum GateType<'a> {
-    MainGate(&'a str),
-    CustomGate(&'a str),
-}
+    let (num_main_gate_selectors, ab_coeff_idx, constant_coeff_idx, d_next_coeff_idx, ac_coeff_idx) =
+        match main_gate {
+            MainGateType::Standard => (
+                7,
+                Width4MainGateWithDNext::AB_MULTIPLICATION_TERM_COEFF_INDEX,
+                Width4MainGateWithDNext::CONSTANT_TERM_COEFF_INDEX,
+                Width4MainGateWithDNext::D_NEXT_TERM_COEFF_INDEX,
+                None,
+            ),
+            MainGateType::SelectorOptimized => (
+                8,
+                SelectorOptimizedWidth4MainGateWithDNext::AB_MULTIPLICATION_TERM_COEFF_INDEX,
+                SelectorOptimizedWidth4MainGateWithDNext::CONSTANT_TERM_COEFF_INDEX,
+                SelectorOptimizedWidth4MainGateWithDNext::D_NEXT_TERM_COEFF_INDEX,
+                Some(SelectorOptimizedWidth4MainGateWithDNext::AC_MULTIPLICATION_TERM_COEFF_INDEX),
+            ),
+        };
 
-impl<'a> GateType<'a> {
-    fn from_name(name: &str) -> Option<Self> {
-        let mut found_gate = None;
-        for gate in EXISTING_GATES.iter() {
-            match gate {
-                GateType::MainGate(gate_name) | GateType::CustomGate(gate_name) => {
-                    if *gate_name == name {
-                        found_gate = Some(gate.clone());
-                    }
-                }
-            }
-        }
-        found_gate
-    }
+    let is_selector_optimized_main_gate = ac_coeff_idx.is_some();
+    let ac_coeff_idx = if let Some(coeff) = ac_coeff_idx {
+        coeff
+    } else {
+        0
+    };
 
-    fn is_main_gate(&self) -> bool {
-        match self {
-            Self::MainGate(_) => true,
-            _ => false,
-        }
-    }
-}
-
-fn inner_generate<C: Circuit<Bn256>>(
-    vk_path: PathBuf,
-    mut output_path: PathBuf,
-    template_file_path: Option<&str>,
-) {
-    let mut reader =
-        std::io::BufReader::new(std::fs::File::open(vk_path).expect("should open file"));
-    output_path.push(VERIFICATION_KEY_FILE_NAME);
-
-    let mut writer = std::io::BufWriter::new(
-        std::fs::File::create(output_path).expect("should open output file"),
-    );
+    let vars = TemplateVars {
+        num_gates,
+        has_rescue_custom_gate,
+        has_lookup,
+        is_selector_optimized_main_gate,
+        num_main_gate_selectors,
+        ab_coeff_idx,
+        ac_coeff_idx,
+        constant_coeff_idx,
+        d_next_coeff_idx,
+    };
 
     let template_file_path = if let Some(path) = template_file_path {
         path
@@ -142,84 +120,68 @@ fn inner_generate<C: Circuit<Bn256>>(
         TEMPLATE_FILE_PATH
     };
 
-    render_verification_key::<C, _, _>(&template_file_path, &mut reader, &mut writer)
+    render(vars, vk, &mut writer, template_file_path)
 }
 
-fn render_verification_key<C: Circuit<Bn256>, R: Read, W: Write>(
-    template_file_path: &str,
-    reader: &mut R,
+fn render<W: Write>(
+    vars: TemplateVars,
+    vk: VerificationKey<Bn256, DummyCircuit>,
     writer: &mut W,
+    template_file_path: &str,
 ) {
-    let vk = VerificationKey::<Bn256, C>::read(reader).expect("parsed vk");
-
     let mut map = MapWrapper::new();
     let mut handlebars = Handlebars::new();
 
-    let declared_gates = C::declare_used_gates().unwrap();
-    let num_gates = EXISTING_GATES.len() - 1;
-    assert!(declared_gates.len() == num_gates);
-    // TODO
-    let mut main_gate = None;
-    for gate in declared_gates {
-        let new_gate = GateType::from_name(gate.name()).expect("a already defined gate");
-
-        if new_gate.is_main_gate() {
-            main_gate = Some(new_gate)
-        }
-    }
-
-    let main_gate = main_gate.expect("circuit should contain a main gate");
-
-    let (num_main_gate_selectors, ab_coeff_idx, constant_coeff_idx, d_next_coeff_idx, ac_coeff_idx) =
-        if main_gate == EXISTING_GATES[0] {
-            (
-                7,
-                Width4MainGateWithDNext::AB_MULTIPLICATION_TERM_COEFF_INDEX,
-                Width4MainGateWithDNext::CONSTANT_TERM_COEFF_INDEX,
-                Width4MainGateWithDNext::D_NEXT_TERM_COEFF_INDEX,
-                None,
-            )
-        } else if main_gate == EXISTING_GATES[1] {
-            (
-                8,
-                SelectorOptimizedWidth4MainGateWithDNext::AB_MULTIPLICATION_TERM_COEFF_INDEX,
-                SelectorOptimizedWidth4MainGateWithDNext::CONSTANT_TERM_COEFF_INDEX,
-                SelectorOptimizedWidth4MainGateWithDNext::D_NEXT_TERM_COEFF_INDEX,
-                Some(SelectorOptimizedWidth4MainGateWithDNext::AC_MULTIPLICATION_TERM_COEFF_INDEX),
-            )
-        } else {
-            unimplemented!("unknown gate");
-        };
-
-    let is_selector_optimized_main_gate = ac_coeff_idx.is_some();
     map.insert(
         "is_selector_optimized_main_gate",
-        is_selector_optimized_main_gate,
+        vars.is_selector_optimized_main_gate,
     );
-
     // main gate + custom rescue
-    assert_eq!(vk.gate_selectors_commitments.len(), num_gates);
-    map.insert("NUM_GATES", vk.gate_selectors_commitments.len());
-    map.insert("MAIN_GATE_AB_COEFF_IDX", ab_coeff_idx);
-    map.insert("CONSTANT_TERM_COEFF_INDEX", constant_coeff_idx);
-    map.insert("D_NEXT_TERM_COEFF_INDEX", d_next_coeff_idx);
-    assert_eq!(ab_coeff_idx, 4);
-    if is_selector_optimized_main_gate {
-        assert!(ac_coeff_idx.unwrap() != 0, "AC coeff can't be zero");
-        map.insert(
-            "MAIN_GATE_AC_COEFF_IDX",
-            ac_coeff_idx.expect("AC coeff idx if selector optimized main gate"),
-        );
-    }
-    assert_eq!(vk.gate_setup_commitments.len(), num_main_gate_selectors);
-    map.insert("NUM_MAIN_GATE_SELECTORS", num_main_gate_selectors);
+    map.insert("NUM_GATES", vars.num_gates);
+    map.insert("has_lookup", vars.has_lookup);
+    map.insert("has_rescue_custom_gate", vars.has_rescue_custom_gate);
+    map.insert("MAIN_GATE_AB_COEFF_IDX", vars.ab_coeff_idx);
+    map.insert("CONSTANT_TERM_COEFF_INDEX", vars.constant_coeff_idx);
+    map.insert("D_NEXT_TERM_COEFF_INDEX", vars.d_next_coeff_idx);
+    assert_eq!(vars.ab_coeff_idx, 4);
+    map.insert("MAIN_GATE_AC_COEFF_IDX", vars.ac_coeff_idx);
+    assert_eq!(
+        vk.gate_setup_commitments.len(),
+        vars.num_main_gate_selectors
+    );
+    map.insert("NUM_MAIN_GATE_SELECTORS", vars.num_main_gate_selectors);
     // a, b, c, d
+    println!("VK STATE WIDTH {}", vk.state_width);
     map.insert("STATE_WIDTH", vk.state_width);
     map.insert("DNEXT_INDEX", vk.state_width - 1);
     map.insert("NUM_G2_ELS", vk.g2_elements.len());
     map.insert("NUM_LOOKUP_TABLES", vk.lookup_tables_commitments.len());
     map.insert("SERIALIZED_PROOF_LENGTH", 44); // TODO calculate length
-    map.insert("NUM_ALPHA_CHALLENGES", 8); // TODO
+    let mut num_commitments_at_z = 2 + 4 + 3;
+    let mut num_commitments_at_z_omega = 1 + 2;
+
+    let mut num_alpha_challenges = 1 + 2;
+    if vars.has_rescue_custom_gate{
+        num_commitments_at_z += 1;
+        num_alpha_challenges += 3;
+    }
+    if vars.has_lookup{
+        num_commitments_at_z += 3;
+        num_alpha_challenges += 3;
+        num_commitments_at_z_omega += 3;
+    }
+    
+    map.insert("rescue_alpha_idx", 1);
+    map.insert("num_commitments_at_z", num_commitments_at_z);
+    map.insert("num_commitments_at_z_omega", num_commitments_at_z_omega);
+    map.insert("NUM_ALPHA_CHALLENGES", num_alpha_challenges); // TODO
+    if vars.has_rescue_custom_gate{
+        map.insert("copy_permutation_alpha_idx", 4);
+        map.insert("lookup_alpha_idx", 6);
+    }else{
+        map.insert("copy_permutation_alpha_idx", 1);        
+        map.insert("lookup_alpha_idx", 3);
+    }
 
     // domain
     map.insert("num_inputs".into(), vk.num_inputs);
@@ -249,32 +211,39 @@ fn render_verification_key<C: Circuit<Bn256>, R: Read, W: Write>(
     }
     map.insert("permutation_commitments", permutation_commitments);
 
-    map.insert(
-        "total_lookup_entries_length",
-        vk.total_lookup_entries_length,
-    );
-    map.insert(
-        "lookup_selector_commitment",
-        G1Point::from_affine_point(
-            vk.lookup_selector_commitment
-                .unwrap_or(<Bn256 as Engine>::G1Affine::zero()),
-        ),
-    );
+    // map.insert(
+    //     "total_lookup_entries_length",
+    //     vk.total_lookup_entries_length,
+    // );
     if vk.total_lookup_entries_length > 0 {
         assert!(vk.lookup_selector_commitment.is_some());
+        assert!(vk.lookup_tables_commitments.len() > 0);
+        assert!(vk.lookup_table_type_commitment.is_some());
+
+        map.insert("has_lookup", true);
+        map.insert(
+            "lookup_selector_commitment",
+            G1Point::from_affine_point(
+                vk.lookup_selector_commitment
+                    .unwrap_or(<Bn256 as Engine>::G1Affine::zero()),
+            ),
+        );
+        if vk.total_lookup_entries_length > 0 {
+            assert!(vk.lookup_selector_commitment.is_some());
+        }
+        let mut lookup_tables_commitments = vec![];
+        for cmt in vk.lookup_tables_commitments.iter() {
+            lookup_tables_commitments.push(G1Point::from_affine_point(cmt.clone()))
+        }
+        map.insert("lookup_tables_commitments", lookup_tables_commitments);
+        map.insert(
+            "lookup_table_type_commitment",
+            G1Point::from_affine_point(
+                vk.lookup_table_type_commitment
+                    .unwrap_or(<Bn256 as Engine>::G1Affine::zero()),
+            ),
+        );
     }
-    let mut lookup_tables_commitments = vec![];
-    for cmt in vk.lookup_tables_commitments.iter() {
-        lookup_tables_commitments.push(G1Point::from_affine_point(cmt.clone()))
-    }
-    map.insert("lookup_tables_commitments", lookup_tables_commitments);
-    map.insert(
-        "lookup_table_type_commitment",
-        G1Point::from_affine_point(
-            vk.lookup_table_type_commitment
-                .unwrap_or(<Bn256 as Engine>::G1Affine::zero()),
-        ),
-    );
 
     // non residues
     let mut non_residues = vec![];
@@ -303,4 +272,17 @@ fn render_verification_key<C: Circuit<Bn256>, R: Read, W: Write>(
     writer
         .write(rendered.as_bytes())
         .expect("must write to file");
+}
+
+struct MapWrapper {
+    inner: Map<String, JsonValue>,
+}
+impl MapWrapper {
+    fn new() -> Self {
+        Self { inner: Map::new() }
+    }
+
+    fn insert<T: Serialize>(&mut self, key: &str, value: T) -> Option<JsonValue> {
+        self.inner.insert(key.into(), to_json(value))
+    }
 }

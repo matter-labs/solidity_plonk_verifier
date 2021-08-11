@@ -13,4 +13,5 @@ serde_json = "*"
 franklin_crypto = {package = "franklin-crypto", path = "../../../matter-labs/franklin-crypto"}
 rescue_poseidon = {package = "rescue_poseidon", path = "../../../matter-labs/rescue-poseidon"}
 # sync_vm = {path = "../../../matter-labs/sync_vm"}
-hex = "*"
+hex = "*"   
+paste = "1.0"
