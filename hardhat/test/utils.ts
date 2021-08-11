@@ -13,7 +13,7 @@ class Point{
     }
 
     static zero(): Point {
-        return new Point(BigNumber.from(0), BigNumber.from(0));
+        return new Point(BigNumber.from(0), BigNumber.from(1));
     }
 
     encode(): BigNumber[]{
@@ -77,8 +77,8 @@ export class Proof{
         proof.lookup_grand_product_commitment = buf.read_optional_curve_affine(); 
         proof.quotient_poly_parts_commitments = buf.read_curve_affine_vector(); 
 
-        proof.state_polys_openings_at_z = buf.read_fr_vec();
-        proof.state_polys_openings_at_dilations = buf.read_tuple_with_two_indexes_vec();
+        proof.state_polys_openings_at_z = buf.read_fr_vec();        
+        proof.state_polys_openings_at_dilations = buf.read_tuple_with_two_indexes_vec();        
         proof.witness_polys_openings_at_z = buf.read_fr_vec();
         proof.witness_polys_openings_at_dilations = buf.read_tuple_with_two_indexes_vec();
         proof.gate_setup_openings_at_z = buf.read_tuple_with_two_indexes_vec();
@@ -111,7 +111,7 @@ export class Proof{
             encoding.push(...el.encode());
         }
         encoding.push(...this.copy_permutation_grand_product_commitment.encode())
-        if(this.lookup_s_poly_commitment){
+        if(this.lookup_s_poly_commitment){            
             encoding.push(...this.lookup_s_poly_commitment.encode())
         }
         if(this.lookup_grand_product_commitment){
@@ -173,7 +173,8 @@ class Buf{
     }
 
     read_optional_flag(): boolean {
-        if(this.read_u64() == BigNumber.from(0)){
+        let parsed_flag = this.read_u64();
+        if(parsed_flag.isZero()){
             return false
         }else{
             return true
