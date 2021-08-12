@@ -9,3 +9,7 @@ edition = "2018"
 codegen = {path = "./codegen"}
 structopt = "0.3"
 dialoguer = "0.8"
+
+[[bin]]
+name = "generate"
+path = "src/main.rs"

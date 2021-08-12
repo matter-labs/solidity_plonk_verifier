@@ -1,32 +1,18 @@
 pragma solidity >0.7;
-import "hardhat/console.sol";
 
 uint256 constant STATE_WIDTH = {{STATE_WIDTH}};
-uint256 constant NUM_MAIN_GATE_SELECTORS = {{NUM_MAIN_GATE_SELECTORS}};
-uint256 constant NUM_GATES = {{NUM_GATES}};
 uint256 constant NUM_G2_ELS = {{NUM_G2_ELS}};
-{{#if has_lookup}}
-uint256 constant NUM_LOOKUP_TABLES = {{NUM_LOOKUP_TABLES}};
-{{/if}}
-uint256 constant SERIALIZED_PROOF_LENGTH = {{SERIALIZED_PROOF_LENGTH}};
-uint256 constant NUM_ALPHA_CHALLENGES = {{NUM_ALPHA_CHALLENGES}};
-uint256 constant MAIN_GATE_AB_COEFF_IDX = {{MAIN_GATE_AB_COEFF_IDX}};
-{{#if is_selector_optimized_main_gate}}
-uint256 constant MAIN_GATE_AC_COEFF_IDX = {{MAIN_GATE_AC_COEFF_IDX}};
-{{/if}}
-uint256 constant CONSTANT_TERM_COEFF_INDEX = {{CONSTANT_TERM_COEFF_INDEX}};
-uint256 constant D_NEXT_TERM_COEFF_INDEX = {{D_NEXT_TERM_COEFF_INDEX}};
 
 struct VerificationKey {
     uint256 domain_size;
     uint256 num_inputs;
     PairingsBn254.Fr omega;
-    PairingsBn254.G1Point[NUM_GATES] gate_selectors_commitments;
-    PairingsBn254.G1Point[NUM_MAIN_GATE_SELECTORS] gate_setup_commitments; // STATE_WIDTH for witness + multiplication + constant
+    PairingsBn254.G1Point[{{NUM_GATES}}] gate_selectors_commitments;
+    PairingsBn254.G1Point[{{NUM_MAIN_GATE_SELECTORS}}] gate_setup_commitments;
     PairingsBn254.G1Point[STATE_WIDTH] permutation_commitments;
     {{#if has_lookup}}
     PairingsBn254.G1Point lookup_selector_commitment;
-    PairingsBn254.G1Point[NUM_LOOKUP_TABLES] lookup_tables_commitments;
+    PairingsBn254.G1Point[{{NUM_LOOKUP_TABLES}}] lookup_tables_commitments;
     PairingsBn254.G1Point lookup_table_type_commitment;
     {{/if}}
 
@@ -51,7 +37,6 @@ contract Plonk4VerifierWithAccessToDNext {
         // openings
         PairingsBn254.Fr[STATE_WIDTH] state_polys_openings_at_z;
         PairingsBn254.Fr[1] state_polys_openings_at_z_omega; // TODO: not use array while there is only D_next
-        PairingsBn254.Fr[] gate_setup_openings_at_z;
         {{#if has_rescue_custom_gate}}
         PairingsBn254.Fr[1] gate_selectors_openings_at_z;
         {{/if}}
@@ -60,6 +45,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr quotient_poly_opening_at_z;
         PairingsBn254.Fr linearization_poly_opening_at_z;
 
+        {{#if has_lookup}}
         // lookup commitments
         PairingsBn254.G1Point lookup_s_poly_commitment;
         PairingsBn254.G1Point lookup_grand_product_commitment;
@@ -70,7 +56,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr lookup_t_poly_opening_at_z_omega;
         PairingsBn254.Fr lookup_selector_poly_opening_at_z;
         PairingsBn254.Fr lookup_table_type_poly_opening_at_z;
-    
+        {{/if}}
         PairingsBn254.G1Point opening_proof_at_z;
         PairingsBn254.G1Point opening_proof_at_z_omega;
     }
@@ -80,7 +66,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr alpha;
         PairingsBn254.Fr beta;
         PairingsBn254.Fr gamma;
-        PairingsBn254.Fr[NUM_ALPHA_CHALLENGES] alpha_values;
+        PairingsBn254.Fr[{{NUM_ALPHA_CHALLENGES}}] alpha_values;
         {{#if has_lookup}}
         PairingsBn254.Fr eta;
         PairingsBn254.Fr beta_lookup;
@@ -228,7 +214,7 @@ contract Plonk4VerifierWithAccessToDNext {
         state.alpha_values[0] = PairingsBn254.new_fr(1);
         state.alpha_values[1] = state.alpha.copy();
         PairingsBn254.Fr memory current_alpha = state.alpha.copy();
-        for(uint256 i=2; i < NUM_ALPHA_CHALLENGES; i++){
+        for(uint256 i=2; i < state.alpha_values.length; i++){
             current_alpha.mul_assign(state.alpha);
             state.alpha_values[i] = current_alpha.copy();
         }
@@ -350,19 +336,18 @@ contract Plonk4VerifierWithAccessToDNext {
         t = proof.state_polys_openings_at_z[3].copy();
         t.add_assign(state.gamma);
         factor.mul_assign(t);
-
         result.sub_assign(factor);
         
-
         // - L_0(z) * alpha_1
         PairingsBn254.Fr memory l_0_at_z = evaluate_l0_at_point(vk.domain_size, state.z);
         l_0_at_z.mul_assign(state.alpha_values[{{copy_permutation_alpha_idx}} + 1]);
-
         result.sub_assign(l_0_at_z);
+
         {{#if has_lookup}}
         PairingsBn254.Fr memory lookup_quotient_contrib = lookup_quotient_contribution(vk, proof, state);
         result.add_assign(lookup_quotient_contrib);
         {{/if}}
+
         PairingsBn254.Fr memory lhs = proof.quotient_poly_opening_at_z.copy();
         lhs.mul_assign(evaluate_vanishing(vk.domain_size, state.z));    
         return lhs.value == result.value;
@@ -408,8 +393,7 @@ contract Plonk4VerifierWithAccessToDNext {
         result.sub_assign(t);
     }
     {{/if}}
-    function aggregated_linearization_commitment(VerificationKey memory vk,  Proof memory proof, PartialVerifierState memory state) internal view returns(PairingsBn254.G1Point memory result){        
-        // only gate selectors participate into verification
+    function aggregated_linearization_commitment(VerificationKey memory vk,  Proof memory proof, PartialVerifierState memory state) internal view returns(PairingsBn254.G1Point memory result){                
         // qMain*(Q_a * A + Q_b * B + Q_c * C + Q_d * D + Q_m * A*B + Q_const + Q_dNext * D_next)
         result = PairingsBn254.new_g1(0, 0);
         // Q_a * A        
@@ -418,47 +402,37 @@ contract Plonk4VerifierWithAccessToDNext {
         // Q_b * B
         scaled = vk.gate_setup_commitments[1].point_mul(proof.state_polys_openings_at_z[1]);
         result.point_add_assign(scaled);
-
         // Q_c * C
         scaled = vk.gate_setup_commitments[2].point_mul(proof.state_polys_openings_at_z[2]);
         result.point_add_assign(scaled);
-
         // Q_d * D
         scaled = vk.gate_setup_commitments[3].point_mul(proof.state_polys_openings_at_z[3]);
         result.point_add_assign(scaled);
-
         // Q_m* A*B or Q_ab*A*B
         PairingsBn254.Fr memory t = proof.state_polys_openings_at_z[0].copy();
         t.mul_assign(proof.state_polys_openings_at_z[1]);
-        scaled = vk.gate_setup_commitments[MAIN_GATE_AB_COEFF_IDX].point_mul(t);
+        scaled = vk.gate_setup_commitments[{{MAIN_GATE_AB_COEFF_IDX}}].point_mul(t);
         result.point_add_assign(scaled);
-
         {{#if is_selector_optimized_main_gate}}
         // Q_AC* A*C
         t = proof.state_polys_openings_at_z[0].copy();
         t.mul_assign(proof.state_polys_openings_at_z[2]);
-        scaled = vk.gate_setup_commitments[MAIN_GATE_AC_COEFF_IDX].point_mul(t);
+        scaled = vk.gate_setup_commitments[{{MAIN_GATE_AC_COEFF_IDX}}].point_mul(t);
         result.point_add_assign(scaled);
         {{/if}}            
-
-
         // Q_const
-        result.point_add_assign(vk.gate_setup_commitments[CONSTANT_TERM_COEFF_INDEX]);
-
+        result.point_add_assign(vk.gate_setup_commitments[{{CONSTANT_TERM_COEFF_INDEX}}]);
         // Q_dNext * D_next
-        scaled = vk.gate_setup_commitments[D_NEXT_TERM_COEFF_INDEX].point_mul(proof.state_polys_openings_at_z_omega[0]);
+        scaled = vk.gate_setup_commitments[{{D_NEXT_TERM_COEFF_INDEX}}].point_mul(proof.state_polys_openings_at_z_omega[0]);
         result.point_add_assign(scaled);        
-
-        
-
         {{#if has_rescue_custom_gate}}
         result.point_mul_assign(proof.gate_selectors_openings_at_z[0]);        
-        // RESCUE CUSTOM GATE LINEARIZATION CONTRIB
+
         PairingsBn254.G1Point memory rescue_custom_gate_linearization_contrib = rescue_custom_gate_linearization_contribution(vk, proof, state);
         result.point_add_assign(rescue_custom_gate_linearization_contrib);
         {{/if}}
         require(vk.non_residues.length == STATE_WIDTH-1);
-        // reuse factor
+
         PairingsBn254.Fr memory one = PairingsBn254.new_fr(1);
         PairingsBn254.Fr memory factor = state.alpha_values[{{copy_permutation_alpha_idx}}].copy();
         for(uint256 i = 0;  i < proof.state_polys_openings_at_z.length; i++){
@@ -477,7 +451,6 @@ contract Plonk4VerifierWithAccessToDNext {
 
         scaled = proof.copy_permutation_grand_product_commitment.point_mul(factor);
         result.point_add_assign(scaled);
-        
         
         // - (a(z) + beta*perm_a + gamma)*()*()*z(z*omega) * beta * perm_d(X)
         factor = state.alpha_values[{{copy_permutation_alpha_idx}}].copy();
@@ -502,6 +475,7 @@ contract Plonk4VerifierWithAccessToDNext {
         factor.mul_assign(state.alpha_values[{{copy_permutation_alpha_idx}} + 1]);
         scaled = proof.copy_permutation_grand_product_commitment.point_mul(factor);
         result.point_add_assign(scaled);
+
         {{#if has_lookup}}          
         PairingsBn254.G1Point memory lookup_linearization_contrib = lookup_linearization_contribution(proof, state);
         result.point_add_assign(lookup_linearization_contrib);
@@ -510,8 +484,6 @@ contract Plonk4VerifierWithAccessToDNext {
     }
     {{#if has_rescue_custom_gate}}
     function rescue_custom_gate_linearization_contribution(VerificationKey memory vk, Proof memory proof, PartialVerifierState memory state) public view returns(PairingsBn254.G1Point memory result){        
-        // now proceed with rescue custom gate, it only involves with selectors
-        // we need 3 challenges alpha alpha^2 alpha^3        
         PairingsBn254.Fr memory t;
         PairingsBn254.Fr memory intermediate_result;
 
@@ -613,7 +585,7 @@ contract Plonk4VerifierWithAccessToDNext {
     {{/if}}
 
     struct Queries {
-        PairingsBn254.G1Point[{{num_commitments_at_z}}] commitments_at_z; // 2 + STATE_WIDTH + STATE_WIDTH-1 + 1+ 3
+        PairingsBn254.G1Point[{{num_commitments_at_z}}] commitments_at_z;
         PairingsBn254.Fr[{{num_commitments_at_z}}] values_at_z;
 
         PairingsBn254.G1Point[{{num_commitments_at_z_omega}}] commitments_at_z_omega;
@@ -625,7 +597,6 @@ contract Plonk4VerifierWithAccessToDNext {
         Proof memory proof, 
         PartialVerifierState memory state
     ) public view returns(Queries memory queries){
-
         // we set first two items in calee side so start idx from 2
         uint256 idx = 2;        
         for(uint256 i = 0; i<STATE_WIDTH; i++){
@@ -690,7 +661,6 @@ contract Plonk4VerifierWithAccessToDNext {
 
         // q(x) = f(x) - f(z) / (x - z)
         // q(x) * (x-z)  = f(x) - f(z)
-        // e(q(x), (x-z)) * e(f(x) - f(z), -G2) == 1
 
         // f(x)
         PairingsBn254.G1Point memory  pair_with_generator = aggregated_commitment_at_z.copy_g1();
@@ -716,7 +686,7 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.G1Point memory pair_with_x = proof.opening_proof_at_z_omega.point_mul(state.u);
         pair_with_x.point_add_assign(proof.opening_proof_at_z);
         pair_with_x.negate();
-        // Pairing precompile expects that points in a `i*x[1] + x[0]` form instead of `x[0] + i*x[1]`
+        // Pairing precompile expects points to be in a `i*x[1] + x[0]` form instead of `x[0] + i*x[1]`
         // so we handle it in code generation step
         PairingsBn254.G2Point memory first_g2 = g2_elements[0];
         PairingsBn254.G2Point memory second_g2 = g2_elements[1];
@@ -738,10 +708,12 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
         {{#each gate_setup_commitments}}
         vk.gate_setup_commitments[{{@index}}] = {{this.g1}};
         {{/each}}
+        {{#if has_rescue_custom_gate}}
         // gate selectors
         {{#each gate_selectors_commitments}}
         vk.gate_selectors_commitments[{{@index}}] = {{this.g1}};
         {{/each}}
+        {{/if}}
         // permutation
         {{#each permutation_commitments}}
         vk.permutation_commitments[{{@index}}] = {{this.g1}};
@@ -769,7 +741,7 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
         uint256[] memory public_inputs, 
         uint256[] memory serialized_proof
     ) internal view returns(Proof memory proof) {
-        // require(serialized_proof.length == SERIALIZED_PROOF_LENGTH); TODO
+        // require(serialized_proof.length == {{SERIALIZED_PROOF_LENGTH}}); TODO
         proof.input_values = new uint256[](public_inputs.length);
         for (uint256 i = 0; i < public_inputs.length; i++) {
             proof.input_values[i] = public_inputs[i];
@@ -823,15 +795,7 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
             );
 
             j += 1;
-        }
-
-        for (uint256 i = 0; i < proof.gate_setup_openings_at_z.length; i++) {
-            proof.gate_setup_openings_at_z[i] = PairingsBn254.new_fr(
-                serialized_proof[j]
-            );
-
-            j += 1;
-        }   
+        } 
         {{#if has_rescue_custom_gate}}
         for (uint256 i = 0; i < proof.gate_selectors_openings_at_z.length; i++) {
             proof.gate_selectors_openings_at_z[i] = PairingsBn254.new_fr(
