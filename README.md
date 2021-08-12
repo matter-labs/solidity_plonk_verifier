@@ -7,7 +7,7 @@ cd solidity_plonk_verifier
 
 ## Options
 ```bash
-cargo run --bin generate -- --help
+cargo run -p codegen-bin generate -- --help
 solidity_plonk_verifier 0.1.0
 
 USAGE:
@@ -23,7 +23,7 @@ OPTIONS:
 ```
 
 ## Generate
-`cargo run --bin generate  -- --verification-key ./data/block_vk_20_keccak.key`
+`cargo run -p codegen-bin generate  -- --verification-key ./data/block_vk_20_keccak.key`
 
 ### Test
 Enter hardhat directory
