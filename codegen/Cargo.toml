@@ -10,8 +10,10 @@ handlebars = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-franklin_crypto = {package = "franklin-crypto", path = "../../../matter-labs/franklin-crypto"}
-rescue_poseidon = {package = "rescue_poseidon", path = "../../../matter-labs/rescue-poseidon"}
+#franklin_crypto = {package = "franklin-crypto", path = "../../../matter-labs/franklin-crypto"}
+#rescue_poseidon = {package = "rescue_poseidon", path = "../../../matter-labs/rescue-poseidon"}
+franklin-crypto = {git = "https://github.com/matter-labs/franklin-crypto", branch = "dev", features = ["multicore"]}
+rescue_poseidon = {git = "https://github.com/matter-labs/rescue-poseidon.git"}
 # sync_vm = {path = "../../../matter-labs/sync_vm"}
 hex = "*"   
 paste = "1.0"
