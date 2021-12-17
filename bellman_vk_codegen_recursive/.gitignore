@@ -4,3 +4,4 @@ xor.sol
 test.sol
 *.key
 *.proof
+recursive.sol

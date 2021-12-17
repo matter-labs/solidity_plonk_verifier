@@ -248,7 +248,7 @@ mod tests {
             std::fs::File::open("./vk.key").unwrap()
         );
         let vk = VerificationKey::<Bn256, RecursiveAggregationCircuitBn256>::read(&mut reader).unwrap();
-        render_verification_key(&vk, "./resursive.sol");
+        render_verification_key(&vk, "./recursive.sol");
 
         let mut reader = std::io::BufReader::with_capacity(1<<24,
             std::fs::File::open("./proof.proof").unwrap()

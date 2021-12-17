@@ -259,6 +259,11 @@ library PairingsBn254 {
         p2[1] = b2;
         return pairing(p1, p2);
     }
+
+    /// Convenience method to check if G1 point is infinity
+    function is_infinity(G1Point memory p) internal pure returns (bool) {
+        return p.X == 0 && p.Y == 0;
+    }
 }
 
 library TranscriptLibrary {
@@ -854,6 +859,8 @@ contract Plonk4VerifierWithAccessToDNext {
     ) internal view returns (bool) {
         require(proof.input_values.length == vk.num_inputs);
         require(vk.num_inputs >= 1);
+        require(!proof.opening_at_z_proof.is_infinity());
+        require(!proof.opening_at_z_omega_proof.is_infinity());
         TranscriptLibrary.Transcript memory transcript = TranscriptLibrary.new_transcript();
         for (uint256 i = 0; i < vk.num_inputs; i++) {
             transcript.update_with_u256(proof.input_values[i]);
