@@ -7,9 +7,13 @@ struct VerificationKey {
     uint256 domain_size;
     uint256 num_inputs;
     PairingsBn254.Fr omega;
-    PairingsBn254.G1Point[1] gate_selectors_commitments;
-    PairingsBn254.G1Point[7] gate_setup_commitments;
+    PairingsBn254.G1Point[2] gate_selectors_commitments;
+    PairingsBn254.G1Point[8] gate_setup_commitments;
     PairingsBn254.G1Point[STATE_WIDTH] permutation_commitments;
+    PairingsBn254.G1Point lookup_selector_commitment;
+    PairingsBn254.G1Point[4] lookup_tables_commitments;
+    PairingsBn254.G1Point lookup_table_type_commitment;
+
     PairingsBn254.Fr[STATE_WIDTH-1] non_residues;
     PairingsBn254.G2Point[NUM_G2_ELS] g2_elements;
 }
@@ -31,11 +35,22 @@ contract Plonk4VerifierWithAccessToDNext {
         // openings
         PairingsBn254.Fr[STATE_WIDTH] state_polys_openings_at_z;
         PairingsBn254.Fr[1] state_polys_openings_at_z_omega; // TODO: not use array while there is only D_next
+        PairingsBn254.Fr[1] gate_selectors_openings_at_z;
         PairingsBn254.Fr[STATE_WIDTH-1] copy_permutation_polys_openings_at_z;
         PairingsBn254.Fr copy_permutation_grand_product_opening_at_z_omega;
         PairingsBn254.Fr quotient_poly_opening_at_z;
         PairingsBn254.Fr linearization_poly_opening_at_z;
 
+        // lookup commitments
+        PairingsBn254.G1Point lookup_s_poly_commitment;
+        PairingsBn254.G1Point lookup_grand_product_commitment;
+        // lookup openings
+        PairingsBn254.Fr lookup_s_poly_opening_at_z_omega;
+        PairingsBn254.Fr lookup_grand_product_opening_at_z_omega;
+        PairingsBn254.Fr lookup_t_poly_opening_at_z;
+        PairingsBn254.Fr lookup_t_poly_opening_at_z_omega;
+        PairingsBn254.Fr lookup_selector_poly_opening_at_z;
+        PairingsBn254.Fr lookup_table_type_poly_opening_at_z;
         PairingsBn254.G1Point opening_proof_at_z;
         PairingsBn254.G1Point opening_proof_at_z_omega;
     }
@@ -45,7 +60,12 @@ contract Plonk4VerifierWithAccessToDNext {
         PairingsBn254.Fr alpha;
         PairingsBn254.Fr beta;
         PairingsBn254.Fr gamma;
-        PairingsBn254.Fr[3] alpha_values;
+        PairingsBn254.Fr[9] alpha_values;
+        PairingsBn254.Fr eta;
+        PairingsBn254.Fr beta_lookup;
+        PairingsBn254.Fr gamma_lookup;
+        PairingsBn254.Fr beta_plus_one;
+        PairingsBn254.Fr beta_gamma;
         PairingsBn254.Fr v;
         PairingsBn254.Fr u;
         PairingsBn254.Fr z;        
@@ -118,10 +138,16 @@ contract Plonk4VerifierWithAccessToDNext {
             transcript.update_with_g1(proof.state_polys_commitments[i]);
         }
 
+        state.eta = transcript.get_challenge();
+        transcript.update_with_g1(proof.lookup_s_poly_commitment);
+
         state.beta = transcript.get_challenge();
         state.gamma = transcript.get_challenge();
 
         transcript.update_with_g1(proof.copy_permutation_grand_product_commitment);
+            state.beta_lookup = transcript.get_challenge();
+            state.gamma_lookup = transcript.get_challenge();
+            transcript.update_with_g1(proof.lookup_grand_product_commitment);
         state.alpha = transcript.get_challenge();
 
         for(uint256 i =0; i < proof.quotient_poly_parts_commitments.length; i++){
@@ -138,6 +164,9 @@ contract Plonk4VerifierWithAccessToDNext {
         for(uint256 i =0; i < proof.state_polys_openings_at_z_omega.length; i++){
             transcript.update_with_fr(proof.state_polys_openings_at_z_omega[i]);
         }             
+        for(uint256 i =0; i < proof.gate_selectors_openings_at_z.length; i++){
+            transcript.update_with_fr(proof.gate_selectors_openings_at_z[i]);
+        }          
         for(uint256 i =0; i < proof.copy_permutation_polys_openings_at_z.length; i++){
             transcript.update_with_fr(proof.copy_permutation_polys_openings_at_z[i]);
         }          
@@ -147,6 +176,12 @@ contract Plonk4VerifierWithAccessToDNext {
 
         transcript.update_with_fr(proof.copy_permutation_grand_product_opening_at_z_omega);
 
+        transcript.update_with_fr(proof.lookup_t_poly_opening_at_z);
+        transcript.update_with_fr(proof.lookup_selector_poly_opening_at_z);
+        transcript.update_with_fr(proof.lookup_table_type_poly_opening_at_z);
+        transcript.update_with_fr(proof.lookup_s_poly_opening_at_z_omega);
+        transcript.update_with_fr(proof.lookup_grand_product_opening_at_z_omega);
+        transcript.update_with_fr(proof.lookup_t_poly_opening_at_z_omega);
         transcript.update_with_fr(proof.linearization_poly_opening_at_z);
 
         state.v = transcript.get_challenge();
@@ -259,12 +294,13 @@ contract Plonk4VerifierWithAccessToDNext {
             state.t.mul_assign(PairingsBn254.new_fr(proof.input_values[i]));
             inputs_term.add_assign(state.t);
         } 
+        inputs_term.mul_assign(proof.gate_selectors_openings_at_z[0]);         
         PairingsBn254.Fr memory result = proof.linearization_poly_opening_at_z.copy();
         result.add_assign(inputs_term);
         
         // compute powers of alpha 
         compute_powers_of_alpha(state);
-        PairingsBn254.Fr memory factor = state.alpha_values[1].copy();
+        PairingsBn254.Fr memory factor = state.alpha_values[4].copy();
         factor.mul_assign(proof.copy_permutation_grand_product_opening_at_z_omega);
 
         // - alpha_0 * (a + perm(z) * beta + gamma)*()*(d + gamma) * z(z*omega)
@@ -286,12 +322,54 @@ contract Plonk4VerifierWithAccessToDNext {
         
         // - L_0(z) * alpha_1
         PairingsBn254.Fr memory l_0_at_z = evaluate_l0_at_point(vk.domain_size, state.z);
-        l_0_at_z.mul_assign(state.alpha_values[1 + 1]);
+        l_0_at_z.mul_assign(state.alpha_values[4 + 1]);
         result.sub_assign(l_0_at_z);
+
+        PairingsBn254.Fr memory lookup_quotient_contrib = lookup_quotient_contribution(vk, proof, state);
+        result.add_assign(lookup_quotient_contrib);
 
         PairingsBn254.Fr memory lhs = proof.quotient_poly_opening_at_z.copy();
         lhs.mul_assign(evaluate_vanishing(vk.domain_size, state.z));    
         return lhs.value == result.value;
+    }
+    function lookup_quotient_contribution(VerificationKey memory vk,  Proof memory proof, PartialVerifierState memory state) internal view returns(PairingsBn254.Fr memory result){
+        PairingsBn254.Fr memory t;
+
+        PairingsBn254.Fr memory one = PairingsBn254.new_fr(1);
+        state.beta_plus_one = state.beta_lookup.copy();
+        state.beta_plus_one.add_assign(one);
+        state.beta_gamma = state.beta_plus_one.copy();
+        state.beta_gamma.mul_assign(state.gamma_lookup);
+
+        // (s'*beta + gamma)*(zw')*alpha
+        t = proof.lookup_s_poly_opening_at_z_omega.copy();
+        t.mul_assign(state.beta_lookup);
+        t.add_assign(state.beta_gamma);
+        t.mul_assign(proof.lookup_grand_product_opening_at_z_omega);
+        t.mul_assign(state.alpha_values[6]);
+        
+
+        // (z - omega^{n-1}) for this part
+        PairingsBn254.Fr memory last_omega = vk.omega.pow(vk.domain_size -1);
+        state.z_minus_last_omega = state.z.copy();
+        state.z_minus_last_omega.sub_assign(last_omega);
+        t.mul_assign(state.z_minus_last_omega);
+        result.add_assign(t);    
+
+        // - alpha_1 * L_{0}(z)
+        state.l_0_at_z = evaluate_lagrange_poly_out_of_domain(0, vk.domain_size, vk.omega, state.z);
+        t = state.l_0_at_z.copy();
+        t.mul_assign(state.alpha_values[6 + 1]);        
+        result.sub_assign(t);
+
+        // - alpha_2 * beta_gamma_powered L_{n-1}(z)
+        PairingsBn254.Fr memory beta_gamma_powered = state.beta_gamma.pow(vk.domain_size-1);
+        state.l_n_minus_one_at_z = evaluate_lagrange_poly_out_of_domain(vk.domain_size-1, vk.domain_size, vk.omega, state.z);
+        t = state.l_n_minus_one_at_z.copy();
+        t.mul_assign(beta_gamma_powered);
+        t.mul_assign(state.alpha_values[6 + 2]);
+        
+        result.sub_assign(t);
     }
     function aggregated_linearization_commitment(VerificationKey memory vk,  Proof memory proof, PartialVerifierState memory state) internal view returns(PairingsBn254.G1Point memory result){                
         // qMain*(Q_a * A + Q_b * B + Q_c * C + Q_d * D + Q_m * A*B + Q_const + Q_dNext * D_next)
@@ -313,15 +391,24 @@ contract Plonk4VerifierWithAccessToDNext {
         t.mul_assign(proof.state_polys_openings_at_z[1]);
         scaled = vk.gate_setup_commitments[4].point_mul(t);
         result.point_add_assign(scaled);
+        // Q_AC* A*C
+        t = proof.state_polys_openings_at_z[0].copy();
+        t.mul_assign(proof.state_polys_openings_at_z[2]);
+        scaled = vk.gate_setup_commitments[5].point_mul(t);
+        result.point_add_assign(scaled);
         // Q_const
-        result.point_add_assign(vk.gate_setup_commitments[5]);
+        result.point_add_assign(vk.gate_setup_commitments[6]);
         // Q_dNext * D_next
-        scaled = vk.gate_setup_commitments[6].point_mul(proof.state_polys_openings_at_z_omega[0]);
+        scaled = vk.gate_setup_commitments[7].point_mul(proof.state_polys_openings_at_z_omega[0]);
         result.point_add_assign(scaled);        
+        result.point_mul_assign(proof.gate_selectors_openings_at_z[0]);        
+
+        PairingsBn254.G1Point memory rescue_custom_gate_linearization_contrib = rescue_custom_gate_linearization_contribution(vk, proof, state);
+        result.point_add_assign(rescue_custom_gate_linearization_contrib);
         require(vk.non_residues.length == STATE_WIDTH-1);
 
         PairingsBn254.Fr memory one = PairingsBn254.new_fr(1);
-        PairingsBn254.Fr memory factor = state.alpha_values[1].copy();
+        PairingsBn254.Fr memory factor = state.alpha_values[4].copy();
         for(uint256 i = 0;  i < proof.state_polys_openings_at_z.length; i++){
             t = state.z.copy();
             if(i == 0){
@@ -340,7 +427,7 @@ contract Plonk4VerifierWithAccessToDNext {
         result.point_add_assign(scaled);
         
         // - (a(z) + beta*perm_a + gamma)*()*()*z(z*omega) * beta * perm_d(X)
-        factor = state.alpha_values[1].copy();
+        factor = state.alpha_values[4].copy();
         factor.mul_assign(state.beta);
         factor.mul_assign(proof.copy_permutation_grand_product_opening_at_z_omega);
         for(uint256 i = 0;  i < STATE_WIDTH-1; i++){
@@ -359,17 +446,118 @@ contract Plonk4VerifierWithAccessToDNext {
         state.l_0_at_z = evaluate_lagrange_poly_out_of_domain(0, vk.domain_size, vk.omega, state.z);
         require(state.l_0_at_z.value != 0);
         factor = state.l_0_at_z.copy();
-        factor.mul_assign(state.alpha_values[1 + 1]);
+        factor.mul_assign(state.alpha_values[4 + 1]);
         scaled = proof.copy_permutation_grand_product_commitment.point_mul(factor);
         result.point_add_assign(scaled);
 
-    }
-    struct Queries {
-        PairingsBn254.G1Point[9] commitments_at_z;
-        PairingsBn254.Fr[9] values_at_z;
+        PairingsBn254.G1Point memory lookup_linearization_contrib = lookup_linearization_contribution(proof, state);
+        result.point_add_assign(lookup_linearization_contrib);
 
-        PairingsBn254.G1Point[3] commitments_at_z_omega;
-        PairingsBn254.Fr[3] values_at_z_omega;
+    }
+    function rescue_custom_gate_linearization_contribution(VerificationKey memory vk, Proof memory proof, PartialVerifierState memory state) public view returns(PairingsBn254.G1Point memory result){        
+        PairingsBn254.Fr memory t;
+        PairingsBn254.Fr memory intermediate_result;
+
+        // a^2 - b = 0
+        t = proof.state_polys_openings_at_z[0].copy();
+        t.mul_assign(t);
+        t.sub_assign(proof.state_polys_openings_at_z[1]);
+        // t.mul_assign(challenge1);
+        t.mul_assign(state.alpha_values[1]);
+        intermediate_result.add_assign(t);
+
+        // b^2 - c = 0
+        t = proof.state_polys_openings_at_z[1].copy();
+        t.mul_assign(t);
+        t.sub_assign(proof.state_polys_openings_at_z[2]);
+        t.mul_assign(state.alpha_values[1+1]);
+        intermediate_result.add_assign(t);
+
+        // c*a - d = 0;
+        t = proof.state_polys_openings_at_z[2].copy();
+        t.mul_assign(proof.state_polys_openings_at_z[0]);
+        t.sub_assign(proof.state_polys_openings_at_z[3]);
+        t.mul_assign(state.alpha_values[1+2]);
+        intermediate_result.add_assign(t);        
+
+        result = vk.gate_selectors_commitments[1].point_mul(intermediate_result);        
+    }
+
+    function lookup_linearization_contribution(Proof memory proof, PartialVerifierState memory state) internal view returns(PairingsBn254.G1Point memory result){
+        PairingsBn254.Fr memory zero = PairingsBn254.new_fr(0);
+        
+        PairingsBn254.Fr memory t;
+        PairingsBn254.Fr memory factor;
+        // s(x) from the Z(x*omega)*(\gamma*(1 + \beta) + s(x) + \beta * s(x*omega)))
+        factor = proof.lookup_grand_product_opening_at_z_omega.copy();
+        factor.mul_assign(state.alpha_values[6]);
+        factor.mul_assign(state.z_minus_last_omega);
+        
+        PairingsBn254.G1Point memory scaled = proof.lookup_s_poly_commitment.point_mul(factor);
+        result.point_add_assign(scaled);
+        
+        
+        // Z(x) from - alpha_0 * Z(x) * (\beta + 1) * (\gamma + f(x)) * (\gamma(1 + \beta) + t(x) + \beta * t(x*omega)) 
+        // + alpha_1 * Z(x) * L_{0}(z) + alpha_2 * Z(x) * L_{n-1}(z)
+
+        // accumulate coefficient
+        factor = proof.lookup_t_poly_opening_at_z_omega.copy();
+        factor.mul_assign(state.beta_lookup);
+        factor.add_assign(proof.lookup_t_poly_opening_at_z);
+        factor.add_assign(state.beta_gamma);
+        
+
+        // (\gamma + f(x))
+        PairingsBn254.Fr memory f_reconstructed;
+        PairingsBn254.Fr memory current = PairingsBn254.new_fr(1);
+        PairingsBn254.Fr memory tmp0;
+        for(uint256 i=0; i< STATE_WIDTH-1; i++){
+            tmp0 = proof.state_polys_openings_at_z[i].copy();
+            tmp0.mul_assign(current);
+            f_reconstructed.add_assign(tmp0);
+
+            current.mul_assign(state.eta);
+        }
+        
+        // add type of table
+        t = proof.lookup_table_type_poly_opening_at_z.copy();
+        t.mul_assign(current);
+        f_reconstructed.add_assign(t);
+
+        f_reconstructed.mul_assign(proof.lookup_selector_poly_opening_at_z);
+        f_reconstructed.add_assign(state.gamma_lookup);
+
+        // end of (\gamma + f(x)) part
+        factor.mul_assign(f_reconstructed);
+        factor.mul_assign(state.beta_plus_one);
+        t = zero.copy();
+        t.sub_assign(factor);
+        factor = t;
+        factor.mul_assign(state.alpha_values[6]);
+
+        // Multiply by (z - omega^{n-1})
+        factor.mul_assign(state.z_minus_last_omega);
+
+        // L_{0}(z) in front of Z(x)
+        t = state.l_0_at_z.copy();
+        t.mul_assign(state.alpha_values[6 + 1]);
+        factor.add_assign(t);
+
+        // L_{n-1}(z) in front of Z(x)
+        t = state.l_n_minus_one_at_z.copy();
+        t.mul_assign(state.alpha_values[6 + 2]);
+        factor.add_assign(t);
+        
+        scaled = proof.lookup_grand_product_commitment.point_mul(factor);
+        result.point_add_assign(scaled);
+    }
+
+    struct Queries {
+        PairingsBn254.G1Point[13] commitments_at_z;
+        PairingsBn254.Fr[13] values_at_z;
+
+        PairingsBn254.G1Point[6] commitments_at_z_omega;
+        PairingsBn254.Fr[6] values_at_z_omega;
     }
 
     function prepare_queries(
@@ -384,6 +572,10 @@ contract Plonk4VerifierWithAccessToDNext {
             queries.values_at_z[idx] = proof.state_polys_openings_at_z[i];
             idx+=1;
         }
+        require(proof.gate_selectors_openings_at_z.length == 1);
+        queries.commitments_at_z[idx] = vk.gate_selectors_commitments[0];
+        queries.values_at_z[idx] = proof.gate_selectors_openings_at_z[0];
+        idx+=1;
         for(uint256 i = 0; i<STATE_WIDTH-1; i++){
             queries.commitments_at_z[idx] = vk.permutation_commitments[i];
             queries.values_at_z[idx] = proof.copy_permutation_polys_openings_at_z[i];
@@ -396,6 +588,28 @@ contract Plonk4VerifierWithAccessToDNext {
         queries.values_at_z_omega[0] = proof.copy_permutation_grand_product_opening_at_z_omega;
         queries.values_at_z_omega[1] = proof.state_polys_openings_at_z_omega[0];
 
+        PairingsBn254.G1Point memory lookup_t_poly_commitment_aggregated = vk.lookup_tables_commitments[0];
+        PairingsBn254.Fr memory current_eta = state.eta.copy();
+        for(uint256 i = 1; i < vk.lookup_tables_commitments.length; i++){
+            state.tp = vk.lookup_tables_commitments[i].point_mul(current_eta);
+            lookup_t_poly_commitment_aggregated.point_add_assign(state.tp);
+
+            current_eta.mul_assign(state.eta);
+        }
+        queries.commitments_at_z[idx] = lookup_t_poly_commitment_aggregated;
+        queries.values_at_z[idx] = proof.lookup_t_poly_opening_at_z;
+        idx +=1;
+        queries.commitments_at_z[idx] = vk.lookup_selector_commitment;
+        queries.values_at_z[idx] = proof.lookup_selector_poly_opening_at_z;
+        idx +=1;
+        queries.commitments_at_z[idx] = vk.lookup_table_type_commitment;
+        queries.values_at_z[idx] = proof.lookup_table_type_poly_opening_at_z;
+        queries.commitments_at_z_omega[2] = proof.lookup_s_poly_commitment;
+        queries.values_at_z_omega[2] = proof.lookup_s_poly_opening_at_z_omega;
+        queries.commitments_at_z_omega[3] = proof.lookup_grand_product_commitment;
+        queries.values_at_z_omega[3] = proof.lookup_grand_product_opening_at_z_omega;
+        queries.commitments_at_z_omega[4] = lookup_t_poly_commitment_aggregated;
+        queries.values_at_z_omega[4] = proof.lookup_t_poly_opening_at_z_omega;
     }
     
     function final_pairing(
@@ -451,22 +665,33 @@ contract Plonk4VerifierWithAccessToDNext {
 contract Verifier is Plonk4VerifierWithAccessToDNext{
 
     function get_verification_key() internal pure returns(VerificationKey memory vk){
-        vk.num_inputs = 0;
-        vk.domain_size = 1024;
-        vk.omega = PairingsBn254.new_fr(0x2ad9021ed07c42ab19f77c5cf2cbd2deb135ea330f1b1573bd08d99309c4bb7d);
+        vk.num_inputs = 1;
+        vk.domain_size = 4194304;
+        vk.omega = PairingsBn254.new_fr(0x18c95f1ae6514e11a1b30fd7923947c5ffcec5347f16e91b4dd654168326bede);
         // coefficients
-        vk.gate_setup_commitments[0] = PairingsBn254.new_g1(0x28e4b895e08fe44e8a40ee4e55014b48644d9bc90d99b0c843cb446ed4976293,0x09a9537a3c0a79dd27b18fff0ed023b1eebdff4fa56e408671ab94d1f1d68812);
-        vk.gate_setup_commitments[1] = PairingsBn254.new_g1(0x2fa743aa87ea6452730e380185e8e1219246fa6760c715db8638e70402cdc741,0x2d403192b6634e67c3c123b7dd40dfb81038e20be041d16741f5168de20d0d2b);
-        vk.gate_setup_commitments[2] = PairingsBn254.new_g1(0x136129a1cf50bef56afd19150ec88b60e7436a10874f92cb25b3f09b10a22b1d,0x072c6c163ebdaa44f362e64237d3c4677f3810e00c3c01ef48e44faa62972810);
-        vk.gate_setup_commitments[3] = PairingsBn254.new_g1(0x29f5808ad1a980778dafa80112e2b89e8a8eba28824aaf2801e20be5de5c9e60,0x0b49325703114dfc5f4485941fe0b1c758951548aed77b61dd4eec467114faa6);
-        vk.gate_setup_commitments[4] = PairingsBn254.new_g1(0x0514e4f286811ce2871fe7a55dfd08a2194c7f77c5522fe8e84f5dd91196f53e,0x016aae323d626488d11eb83c638d0cfa6f4ffc2b6aeceed4174114044419c9db);
-        vk.gate_setup_commitments[5] = PairingsBn254.new_g1(0x067d9351891f1d24766dc53548294d51bf542ad00e92b2c4e65a69b7cf24c250,0x24c6e1ac5e8b2b42e7091a9ab3b03ad2fb7dc3a783aba00904e8b87ecf076249);
-        vk.gate_setup_commitments[6] = PairingsBn254.new_g1(0x0000000000000000000000000000000000000000000000000000000000000000,0x0000000000000000000000000000000000000000000000000000000000000001);
+        vk.gate_setup_commitments[0] = PairingsBn254.new_g1(0x0e6ef674bab3d702640860ae3d2769fde4524fe8be7acf556c843d8d6b68512e,0x16851ea15c052644d42973ce8cca85a673ee8269c688260011f3f39ec86d63bd);
+        vk.gate_setup_commitments[1] = PairingsBn254.new_g1(0x28adfa3384852cd51f63f3e29caeeb2c4cfa9a8cb954de15b6de323f08ea130d,0x04b81bacf45517ce0969e8a360a98cede021fd1f5ac41cc59827fe0075f560b2);
+        vk.gate_setup_commitments[2] = PairingsBn254.new_g1(0x16bca9ca98362a0af9e9ac96877e4f4fd581154816bbb93c0a4d231e4da7b533,0x034c18c61021b5b45425070a15a7c5f689104948ecceff41204b91bdbcaa8e40);
+        vk.gate_setup_commitments[3] = PairingsBn254.new_g1(0x1dab17b0fb308cdf468135cae6b9553290fd0b3d141cd4853a16628f3b283f39,0x266b85e6a1fadcb9cb9ee6a573f8ebc068b58d9b07073b37faf24a460949bd78);
+        vk.gate_setup_commitments[4] = PairingsBn254.new_g1(0x1efcda679e7e2a8f8e153320d87af66c24150e0dc2d1b33e34579a57aaad86df,0x05f96df3677c842ff0893d94a2dc78221942ff59aa1fea2caba90f2c15a76ad7);
+        vk.gate_setup_commitments[5] = PairingsBn254.new_g1(0x06743dcdc186daf553fa97871024c34f65bdec45329d935dd1f02061ce1d15b9,0x0dab8072a8a350674729cc2bc57c5d4f302cdf9100b1fef952ba5562b7147296);
+        vk.gate_setup_commitments[6] = PairingsBn254.new_g1(0x017fab2d473e97d7c960dbbee87971429d0cd08c5358193d77f1a92cd1908cf8,0x2ff22c8a4013741fa0d55d4a30ea6a5a980899f7a5910f79186ed82644fdd5aa);
+        vk.gate_setup_commitments[7] = PairingsBn254.new_g1(0x274fa34991c93920f83fb668b4a2fd65fd7ae3198b1be44b0d51893b175adee2,0x01b1088cf63d1b890f4dfb32263b84dfa6893d654087f9c0b7594621dea3ae7e);
+        // gate selectors
+        vk.gate_selectors_commitments[0] = PairingsBn254.new_g1(0x10f75af7842f3075e5f7e800fdaff1c7601d18ad91af9137911b8184eb984881,0x10cdee0681cf3b05a731e194197d8c14b78382b0cd3c8bf467edb19413616c31);
+        vk.gate_selectors_commitments[1] = PairingsBn254.new_g1(0x0b546c03b3f0c5b79354094d570db47dc8acbcf8a7dbcdd893b08c26ed02e3a6,0x190f5f90205a30144b75c6e991d6a9439874085a62808a98623fb38856b1dc1e);
         // permutation
-        vk.permutation_commitments[0] = PairingsBn254.new_g1(0x087f0f69f1e5356cd1cebfbd8390e674d09c985e08f8b18e3806d80529872943,0x105e5768f927be986597f51334dcf58a8851e475ded11f1d81e7c280c72b4003);
-        vk.permutation_commitments[1] = PairingsBn254.new_g1(0x037fcff8e39c749a0616e88e90bd50281cdc6460283e9907b7122139919540ad,0x1ac03b39b7c1c9a8cb5f1b519e877826bde581ec9a26b78e3117513e2786f9fa);
-        vk.permutation_commitments[2] = PairingsBn254.new_g1(0x2c4e57a67196b30880f2431e17c90ef316b609a6aac01cd8a137f2517fc261f2,0x1c368c8472b48ac128af53bb94aba3ce8621f4d09c65dcad1c965fba740245c7);
-        vk.permutation_commitments[3] = PairingsBn254.new_g1(0x1b54c67d30b996efc49fe40f6357c863617a4acebbf9849b4c7d02f7bf257597,0x148d7cbedc7986a88ae8186d0009876c12d2e3ab082c57250216a18e36a60f9a);
+        vk.permutation_commitments[0] = PairingsBn254.new_g1(0x160d0e9996691e79b708f97a8710d90056c09c59a69b04c27d52c4b96cee682c,0x03bb7f8ca710913d03453812f7e944b3da48f10589345bd1e08fab670814a845);
+        vk.permutation_commitments[1] = PairingsBn254.new_g1(0x1b21012c9fd959042fb678cc9acc71e5f56505615097d9ada99c307799f2763b,0x050e8ee3e90366495e00ff555f2a9067ca6b6b024cda0d414b2465c7452351e4);
+        vk.permutation_commitments[2] = PairingsBn254.new_g1(0x2cc2f205bb956c9d280ae85e802a934e870c7a0d61d79101bfc068716657ea12,0x0134b2aac0cfdf0d987910479b07d2107215ce28d00c139942303012c20198a6);
+        vk.permutation_commitments[3] = PairingsBn254.new_g1(0x2c4fdbf957c6c1d4806bd8b05cb9c72f53f545f63f2351682acf1dc84a538925,0x2823b2d8215e186076131b5c01a4c0d688a7b3052b7bc1eea9a04f07fe995449);
+        // lookup table commitments
+        vk.lookup_selector_commitment = PairingsBn254.new_g1(0x2b50b6c404e1fe2f34ed627af139f59a4a960dbf3e768ddb0d5641362c27894a,0x18e8ffc4ee8d5f8e12fcf79cceed62a64a29b0b38b3d7590050b2340fe0b77df);
+        vk.lookup_tables_commitments[0] = PairingsBn254.new_g1(0x29392d050277689b614946329abc02ec35b8de516083d6c7a473adc03cf9a9da,0x2c2613c5de87958bd616174cdde5074c0f09f1044ca3f105b36610138ce81832);
+        vk.lookup_tables_commitments[1] = PairingsBn254.new_g1(0x19c55841f31c273363b9c2ad566d2e188d2f83e552ae845b6916ec2297490ac7,0x2f395b2d0b5ca78b20aaaac1f15330f7ef011bb7b7c3a5cb7bca983ed87e440d);
+        vk.lookup_tables_commitments[2] = PairingsBn254.new_g1(0x2344f6b665f2813dcd456cc2cb0155e70fe314ba31d7381f026796aa6c249e38,0x066948b6e6d93863384839b12d86e9be760cdcffece67126be006c69f9eb9637);
+        vk.lookup_tables_commitments[3] = PairingsBn254.new_g1(0x2b7969fd8d76bec1dc7dba023dc92069a926578dfc31f66e2c7f127f543077be,0x2cc245330c7802add61d8150a6432e4a238c5e2ca213de6d9a4d5f859a2db77f);
+        vk.lookup_table_type_commitment = PairingsBn254.new_g1(0x204827ceddb1f2cc4276871e9397a85d8fdb12361d9d841e9d18336a57742aee,0x121005118fa0f3498c6ee29b4c6b05a78d9273928805fe76040afb7799a92d45);
         // non residues
         vk.non_residues[0] = PairingsBn254.new_fr(0x0000000000000000000000000000000000000000000000000000000000000005);
         vk.non_residues[1] = PairingsBn254.new_fr(0x0000000000000000000000000000000000000000000000000000000000000007);
@@ -474,7 +699,7 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
         
         // g2 elements
         vk.g2_elements[0] = PairingsBn254.new_g2([0x198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2,0x1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed],[0x090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b,0x12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa]);
-        vk.g2_elements[1] = PairingsBn254.new_g2([0x12740934ba9615b77b6a49b06fcce83ce90d67b1d0e2a530069e3a7306569a91,0x116da8c89a0d090f3d8644ada33a5f1c8013ba7204aeca62d66d931b99afe6e7],[0x25222d9816e5f86b4a7dedd00d04acc5c979c18bd22b834ea8c6d07c0ba441db,0x076441042e77b6309644b56251f059cf14befc72ac8a6157d30924e58dc4c172]);
+        vk.g2_elements[1] = PairingsBn254.new_g2([0x260e01b251f6f1c7e7ff4e580791dee8ea51d87a358e038b4efe30fac09383c1,0x0118c4d5b837bcc2bc89b5b398b5974e9f5944073b32078b7e231fec938883b0],[0x04fc6369f7110fe3d25156c1bb9a72859cf2a04641f99ba4ee413c80da6a5fe4,0x22febda3c0c0632a56475b4214e5615e11e6dd3f96e6cea2854a87d4dacc5e55]);
     }
 
     function deserialize_proof(
@@ -501,6 +726,16 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
                 serialized_proof[j+1]
         );
         j += 2;  
+        proof.lookup_s_poly_commitment = PairingsBn254.new_g1_checked(
+                serialized_proof[j],
+                serialized_proof[j+1]
+        );
+        j += 2;
+        proof.lookup_grand_product_commitment = PairingsBn254.new_g1_checked(
+                serialized_proof[j],
+                serialized_proof[j+1]
+        );
+        j += 2;    
         for (uint256 i = 0; i < proof.quotient_poly_parts_commitments.length; i++) {
             proof.quotient_poly_parts_commitments[i] = PairingsBn254.new_g1_checked(
                 serialized_proof[j],
@@ -524,6 +759,13 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
 
             j += 1;
         } 
+        for (uint256 i = 0; i < proof.gate_selectors_openings_at_z.length; i++) {
+            proof.gate_selectors_openings_at_z[i] = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+
+            j += 1;
+        }        
         for (uint256 i = 0; i < proof.copy_permutation_polys_openings_at_z.length; i++) {
             proof.copy_permutation_polys_openings_at_z[i] = PairingsBn254.new_fr(
                 serialized_proof[j]
@@ -535,6 +777,32 @@ contract Verifier is Plonk4VerifierWithAccessToDNext{
                 serialized_proof[j]
             );
 
+        j += 1;
+        proof.lookup_s_poly_opening_at_z_omega = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+        j += 1;
+        proof.lookup_grand_product_opening_at_z_omega = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+
+        j += 1;
+        proof.lookup_t_poly_opening_at_z = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+
+        j += 1;
+        proof.lookup_t_poly_opening_at_z_omega = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+        j += 1;
+        proof.lookup_selector_poly_opening_at_z = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
+        j += 1;
+        proof.lookup_table_type_poly_opening_at_z = PairingsBn254.new_fr(
+                serialized_proof[j]
+            );
         j += 1;
         proof.quotient_poly_opening_at_z = PairingsBn254.new_fr(
             serialized_proof[j]
