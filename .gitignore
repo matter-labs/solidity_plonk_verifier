@@ -2,6 +2,7 @@
 Cargo.lock
 hardhat/package-lock.json
 hardhat/yarn.lock
+bellman_vk_codegen/target
 
 
 # Added by cargo

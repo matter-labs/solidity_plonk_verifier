@@ -12,9 +12,14 @@ serde_derive = "*"
 serde_json = "*"
 # franklin_crypto = {package = "franklin-crypto", path = "../../../matter-labs/franklin-crypto"}
 # rescue_poseidon = {package = "rescue_poseidon", path = "../../../matter-labs/rescue-poseidon"}
-franklin_crypto = {package = "franklin-crypto", git = "ssh://git@github.com/matter-labs/franklin-crypto", features = ["plonk"], branch = "dev"}
-rescue_poseidon = {git = "ssh://git@github.com/matter-labs/rescue-poseidon"}
+# franklin_crypto = {package = "franklin-crypto", git = "ssh://git@github.com/matter-labs/franklin-crypto", features = ["plonk"], branch = "dev"}
+# rescue_poseidon = {git = "ssh://git@github.com/matter-labs/rescue-poseidon"}
+
+franklin_crypto = {package = "franklin-crypto", features = ["plonk"], git = "https://github.com/matter-labs/franklin-crypto", branch = "dev"}
+rescue_poseidon = {git = "https://github.com/matter-labs/rescue-poseidon"}
+
 # sync_vm = {git = "ssh://git@github.com/matter-labs/sync_vm", branch = "dev"}
 # sync_vm = {path = "../../sync_vm"}
 hex = "*"   
 paste = "1.0"
+ethereum-types = "0.12"
