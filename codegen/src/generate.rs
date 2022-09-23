@@ -24,9 +24,6 @@ pub enum MainGateType {
     SelectorOptimized,
 }
 
-const TEMPLATE_FILE_PATH: &str = "./template/verifier.sol";
-const SOLIDITY_VERIFIER_FILE_NAME: &str = "VerificationKey.sol";
-
 struct TemplateVars {
     num_gates: usize,
     has_rescue_custom_gate: bool,
@@ -39,10 +36,8 @@ struct TemplateVars {
     d_next_coeff_idx: usize,
 }
 
-pub fn generate(vk_path: PathBuf, mut output_path: PathBuf, template_file_path: Option<&str>) {
+pub fn generate(vk_path: PathBuf, output_dir: PathBuf, template_files_path: Vec<&str>) {
     let mut reader = std::fs::File::open(vk_path).expect("vk file");
-    output_path.push(SOLIDITY_VERIFIER_FILE_NAME);
-    let mut writer = std::fs::File::create(output_path).expect("output file");
 
     let vk = VerificationKey::<Bn256, DummyCircuit>::read(&mut reader).expect("read buffer");
     // we know from the fact that vk belongs to a
@@ -114,20 +109,14 @@ pub fn generate(vk_path: PathBuf, mut output_path: PathBuf, template_file_path: 
         d_next_coeff_idx,
     };
 
-    let template_file_path = if let Some(path) = template_file_path {
-        path
-    } else {
-        TEMPLATE_FILE_PATH
-    };
-
-    render(vars, vk, &mut writer, template_file_path)
+    render(vars, vk, output_dir, template_files_path)
 }
 
-fn render<W: Write>(
+fn render(
     vars: TemplateVars,
     vk: VerificationKey<Bn256, DummyCircuit>,
-    writer: &mut W,
-    template_file_path: &str,
+    output_dir: PathBuf,
+    template_files_path: Vec<&str>,
 ) {
     let mut map = MapWrapper::new();
     let mut handlebars = Handlebars::new();
@@ -259,19 +248,24 @@ fn render<W: Write>(
     }
     map.insert("g2_elements", g2_elements);
 
-    // register template from a file and assign a name to it
-    handlebars
-        .register_template_file("contract", template_file_path)
-        .expect(&format!(
-            "must read the template at path {}",
-            template_file_path
-        ));
+    for template_file_path in template_files_path {
+        let mut output_path = output_dir.clone();
+        output_path.push(template_file_path.split('/').last().unwrap());
+        let mut writer = std::fs::File::create(output_path).expect("output file");
+        // register template from a file and assign a name to it
+        handlebars
+            .register_template_file("contract", template_file_path.clone())
+            .expect(&format!(
+                "must read the template at path {}",
+                template_file_path
+            ));
 
-    let rendered = handlebars.render("contract", &map.inner).unwrap();
+        let rendered = handlebars.render("contract", &map.inner).unwrap();
 
-    writer
-        .write(rendered.as_bytes())
-        .expect("must write to file");
+        writer
+            .write(rendered.as_bytes())
+            .expect("must write to file");
+    }
 }
 
 struct MapWrapper {
