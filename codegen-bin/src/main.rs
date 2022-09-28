@@ -3,7 +3,12 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 const DEFAULT_OUTPUT_FILE: &str = "./hardhat/contracts";
-const TEMPLATE_FILE_PATH: &str = "./codegen/template/verifier.sol";
+
+const PAIRING_BN_254_FILE_PATH: &str = "./codegen/template/PairingsBn254.sol";
+const TRANSCRIPT_LIB_FILE_PATH: &str = "./codegen/template/TranscriptLib.sol";
+const UNCHECKED_MATH_FILE_PATH: &str = "./codegen/template/UncheckedMath.sol";
+const PLONK_4_VERIFIER_FILE_PATH: &str = "./codegen/template/Plonk4VerifierWithAccessToDNext.sol";
+const VEERIFIER_TEMPLATE_FILE_PATH: &str = "./codegen/template/Verifier.sol";
 
 #[derive(StructOpt, Debug)]
 pub struct Opts {
@@ -24,7 +29,7 @@ fn main() {
         output,
     } = opts;
 
-    generate(verification_key, output.clone(), Some(TEMPLATE_FILE_PATH));
+    generate(verification_key, output.clone(), vec![VEERIFIER_TEMPLATE_FILE_PATH, PLONK_4_VERIFIER_FILE_PATH, TRANSCRIPT_LIB_FILE_PATH, PAIRING_BN_254_FILE_PATH, UNCHECKED_MATH_FILE_PATH]);
 
     eprintln!("Success!");
 }

@@ -1,17 +1,15 @@
-[package]
-name = "solidity_plonk_verifier"
-version = "0.1.0"
-edition = "2018"
-
 [workspace]
 members = [
     "codegen",
-    "codegen-bin"
+    "codegen-bin",
+    # "bizir"
 ]
 default-members = [
     "codegen-bin"
 ]
 
-[[bin]]
-name = "generate"
-path = "codegen-bin/src/main.rs"
+# [[bin]]
+# name = "generate"
+# path = "codegen-bin/src/main.rs"
+# name = "bizir"
+# path = "bizir/src/main.rs"
