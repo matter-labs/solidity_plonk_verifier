@@ -1,13 +1,13 @@
 # Code Generator for Solidity Verifier
 ## Install code generator tool
 ```
-git clone ssh://git@github.com/matter-labs/solidity_plonk_verifier
+git clone ssh://git@github.com/matter-labs/solidity_plonk_verifier --branch dev
 cd solidity_plonk_verifier
 ```
 
 ## Options
 ```bash
-cargo run -p codegen-bin generate -- --help
+cargo run generate -- --help
 solidity_plonk_verifier 0.1.0
 
 USAGE:
@@ -23,7 +23,7 @@ OPTIONS:
 ```
 
 ## Generate
-`cargo run -p codegen-bin generate  -- --verification-key ./data/block_vk_20_keccak.key`
+`cargo run  -- --verification-key ./data/example.key`
 
 ### Test
 Enter hardhat directory
@@ -32,4 +32,6 @@ Enter hardhat directory
 
 run test 
 
-`PROOF_FILE=./block_proof_20_keccak.proof hardhat test`
+`PROOF_FILE=../data/example.proof npm test`
+or
+`PROOF_FILE=../data/example.proof npx hardhat test`
