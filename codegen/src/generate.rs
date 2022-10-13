@@ -36,10 +36,22 @@ struct TemplateVars {
     d_next_coeff_idx: usize,
 }
 
-pub fn generate(vk_path: PathBuf, output_dir: PathBuf, template_files_path: Vec<&str>) {
+pub enum Encoding{
+    Json,
+    Default,
+}
+
+pub fn generate(vk_path: PathBuf, output_dir: PathBuf, encoding_type: Encoding, template_files_path: Vec<&str>) {
     let mut reader = std::fs::File::open(vk_path).expect("vk file");
 
-    let vk = VerificationKey::<Bn256, DummyCircuit>::read(&mut reader).expect("read buffer");
+    let vk = match encoding_type{
+        Encoding::Json => {
+            serde_json::from_reader(reader).expect("read vk from json encoded data")
+        },
+        Encoding::Default => {
+            VerificationKey::<Bn256, DummyCircuit>::read(&mut reader).expect("read vk from default encoded data")
+        },
+    };
     // we know from the fact that vk belongs to a
     // - standart main gate when there are 7 selectors
     // - selector optimized main gate when there are 8 selectors

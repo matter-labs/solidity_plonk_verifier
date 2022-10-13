@@ -23,6 +23,10 @@ OPTIONS:
 ```
 
 ## Generate
+### Json
+`cargo run  -- --encoding json --verification-key ./data/example.json`
+
+### Default
 `cargo run  -- --verification-key ./data/example.key`
 
 ### Test

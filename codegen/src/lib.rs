@@ -2,7 +2,7 @@ mod generate;
 mod circuits;
 mod serialize;
 
-pub use generate::{generate, MainGateType};
+pub use generate::{generate, MainGateType, Encoding};
 
 use ethereum_types::U256;
 use franklin_crypto::bellman::pairing::ff::*;
