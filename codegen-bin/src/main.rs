@@ -1,4 +1,4 @@
-use codegen::generate;
+use codegen::{generate, Encoding};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -18,6 +18,9 @@ pub struct Opts {
     /// Output directory
     #[structopt(long, parse(from_os_str), default_value = DEFAULT_OUTPUT_FILE)]
     output: PathBuf,
+
+    #[structopt(long)]
+    encoding: Option<String>,
 }
 
 fn main() {
@@ -27,9 +30,29 @@ fn main() {
     let Opts {
         verification_key,
         output,
+        encoding,
     } = opts;
 
-    generate(verification_key, output.clone(), vec![VEERIFIER_TEMPLATE_FILE_PATH, PLONK_4_VERIFIER_FILE_PATH, TRANSCRIPT_LIB_FILE_PATH, PAIRING_BN_254_FILE_PATH, UNCHECKED_MATH_FILE_PATH]);
+    let encoding = match encoding {
+        Some(encoding) => match encoding.as_str() {
+            "json" => Encoding::Json,
+            _ => Encoding::Default,
+        },
+        None => Encoding::Default,
+    };
+
+    generate(
+        verification_key,
+        output.clone(),
+        encoding,
+        vec![
+            VEERIFIER_TEMPLATE_FILE_PATH,
+            PLONK_4_VERIFIER_FILE_PATH,
+            TRANSCRIPT_LIB_FILE_PATH,
+            PAIRING_BN_254_FILE_PATH,
+            UNCHECKED_MATH_FILE_PATH,
+        ],
+    );
 
     eprintln!("Success!");
 }
