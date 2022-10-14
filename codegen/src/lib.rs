@@ -8,7 +8,7 @@ use ethereum_types::U256;
 use franklin_crypto::bellman::pairing::ff::*;
 use franklin_crypto::bellman::pairing::*;
 use franklin_crypto::bellman::pairing::bn256::{Bn256, Fr};
-use franklin_crypto::bellman::plonk::better_better_cs::cs::stable::Circuit;
+use franklin_crypto::bellman::plonk::better_better_cs::cs::Circuit;
 use franklin_crypto::bellman::plonk::better_better_cs::proof::Proof;
 use franklin_crypto::bellman::plonk::better_better_cs::setup::VerificationKey;
 use franklin_crypto::bellman::plonk::better_better_cs::gates::selector_optimized_with_d_next::SelectorOptimizedWidth4MainGateWithDNext;
