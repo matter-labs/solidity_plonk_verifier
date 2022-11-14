@@ -6,7 +6,7 @@ import "./UncheckedMath.sol";
 contract Verifier is Plonk4VerifierWithAccessToDNext {
     using UncheckedMath for uint256;
 
-    function get_verification_key() internal pure returns(VerificationKey memory vk){
+    function get_verification_key() public pure returns(VerificationKey memory vk) {
         vk.num_inputs = {{num_inputs}};
         vk.domain_size = {{domain_size}};
         vk.omega = {{domain_generator.el}};
