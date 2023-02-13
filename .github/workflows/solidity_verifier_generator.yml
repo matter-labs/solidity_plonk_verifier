@@ -1,0 +1,67 @@
+name: Solidity verifier generator
+
+# Only trigger, when the deployment workflow succeeded
+on:
+  workflow_dispatch:
+    inputs:
+      scheduler_vk_json_file_link:
+        description: "Link to scheduler verification key json file"
+        type: string
+        required: true
+        default: "https://github.com/matter-labs/zksync-2-dev/blob/main/core/bin/verification_key_generator_and_server/data/verification_0_key.json"
+
+jobs:
+  generate-solidity-verifier:
+    runs-on: [self-hosted, ci-runner]
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+          submodules: "recursive"
+          token: ${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}
+      - name: Setup Rust
+        run: |
+          curl https://sh.rustup.rs -sSf | bash -s -- -y
+          source "$HOME/.cargo/env"
+          sudo apt update && sudo apt install clang openssl libssl-dev gcc g++ pkg-config build-essential libclang-dev -y
+      - name: Estimate circuit limit
+        run: |
+          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf ssh://git@github.com/
+          git config --global --add url."https://${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}:x-oauth-basic@github.com/".insteadOf https://github.com/
+          source "$HOME/.cargo/env"
+          echo "Downloading verification key json file from ${{ inputs.scheduler_vk_json_file_link }}"
+          curl -o vk.json "${{ inputs.scheduler_vk_json_file_link }}"
+          echo "Generating Verifier.sol"
+          cargo run --release -- --encoding json --verification-key vk.json
+      - uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb # v3
+        with:
+          path: ./circuit_limit_${{ matrix.key }}.txt
+
+  create-pr:
+    runs-on: [ self-hosted, ci-runner ]
+    needs: [ "generate-solidity-verifier" ]
+    steps:
+      - uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+          submodules: "recursive"
+          token: ${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}
+      - uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7 # v3
+        with:
+          path: hardhat/contracts
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@2b011faafdcbc9ceb11414d64d0573f37c774b04 # v4
+        with:
+          token: ${{ secrets.ZKSYNC_ADMIN_BOT_ORG_REPO_WRITE }}
+          base: ${{ github.event.inputs.target_branch }}
+          commit-message: update generated verifier.sol file
+          committer: zksync-admin-bot2 <temp-bot@matterlabs.dev>
+          author: zksync-admin-bot2 <temp-bot@matterlabs.dev>
+          signoff: false
+          branch: update-verifier-sol
+          branch-suffix: short-commit-hash
+          delete-branch: true
+          title: Update verifier solidity file from branch ${{ github.event.inputs.target_branch }}
+          body: |
+            Update generated verifier solidity file from branch ${{ github.event.inputs.target_branch }}
