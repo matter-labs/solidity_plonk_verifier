@@ -47,7 +47,7 @@ contract Verifier is Plonk4VerifierWithAccessToDNext {
         uint256[] calldata public_inputs, 
         uint256[] calldata serialized_proof
     ) internal pure returns(Proof memory proof) {
-        // require(serialized_proof.length == {{SERIALIZED_PROOF_LENGTH}}); TODO
+        require(serialized_proof.length == {{SERIALIZED_PROOF_LENGTH}});
         proof.input_values = new uint256[](public_inputs.length);
         for (uint256 i = 0; i < public_inputs.length; i = i.uncheckedInc()) {
             proof.input_values[i] = public_inputs[i];

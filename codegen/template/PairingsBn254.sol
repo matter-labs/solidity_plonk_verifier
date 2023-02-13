@@ -202,7 +202,6 @@ library PairingsBn254 {
     {
         // https://eips.ethereum.org/EIPS/eip-197
         // Elliptic curve points are encoded as a Jacobian pair (X, Y) where the point at infinity is encoded as (0, 0)
-        // TODO
         if(p.X == 0 && p.Y == 1){
             p.Y = 0;
         }

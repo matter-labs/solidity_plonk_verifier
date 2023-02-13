@@ -157,7 +157,7 @@ fn render(
     map.insert("DNEXT_INDEX", vk.state_width - 1);
     map.insert("NUM_G2_ELS", vk.g2_elements.len());
     map.insert("NUM_LOOKUP_TABLES", vk.lookup_tables_commitments.len());
-    map.insert("SERIALIZED_PROOF_LENGTH", 44); // TODO calculate length
+    map.insert("SERIALIZED_PROOF_LENGTH", 44);
     let mut num_commitments_at_z = 2 + 4 + 3;
     let mut num_commitments_at_z_omega = 1 + 2;
 
@@ -175,7 +175,7 @@ fn render(
     map.insert("rescue_alpha_idx", 1);
     map.insert("num_commitments_at_z", num_commitments_at_z);
     map.insert("num_commitments_at_z_omega", num_commitments_at_z_omega);
-    map.insert("NUM_ALPHA_CHALLENGES", num_alpha_challenges); // TODO
+    map.insert("NUM_ALPHA_CHALLENGES", num_alpha_challenges);
     if vars.has_rescue_custom_gate{
         map.insert("copy_permutation_alpha_idx", 4);
         map.insert("lookup_alpha_idx", 6);
@@ -186,6 +186,7 @@ fn render(
 
     // domain
     map.insert("num_inputs".into(), vk.num_inputs);
+    assert!(vk.num_inputs > 0);
     let domain: Domain<Fr> = Domain::new_for_size(vk.n as u64).expect("a domain");
     map.insert("domain_size".into(), domain.size);
     map.insert(
@@ -211,11 +212,7 @@ fn render(
         permutation_commitments.push(G1Point::from_affine_point(cmt.clone()))
     }
     map.insert("permutation_commitments", permutation_commitments);
-
-    // map.insert(
-    //     "total_lookup_entries_length",
-    //     vk.total_lookup_entries_length,
-    // );
+    
     if vk.total_lookup_entries_length > 0 {
         assert!(vk.lookup_selector_commitment.is_some());
         assert!(vk.lookup_tables_commitments.len() > 0);

@@ -43,7 +43,7 @@ contract Plonk4VerifierWithAccessToDNext {
         
         // openings
         PairingsBn254.Fr[STATE_WIDTH] state_polys_openings_at_z;
-        PairingsBn254.Fr[1] state_polys_openings_at_z_omega; // TODO: not use array while there is only D_next
+        PairingsBn254.Fr[1] state_polys_openings_at_z_omega;
         {{#if has_rescue_custom_gate}}
         PairingsBn254.Fr[1] gate_selectors_openings_at_z;
         {{/if}}
@@ -233,7 +233,7 @@ contract Plonk4VerifierWithAccessToDNext {
         if(verify_quotient_evaluation(vk, proof, state)== false){
                 return false;
         }
-        require(proof.state_polys_openings_at_z_omega.length == 1); // TODO
+        require(proof.state_polys_openings_at_z_omega.length == 1);
 
         
         PairingsBn254.G1Point memory quotient_result =  proof.quotient_poly_parts_commitments[0].copy_g1();
@@ -308,11 +308,10 @@ contract Plonk4VerifierWithAccessToDNext {
         for (uint256 i = 0; i < lagrange_poly_numbers.length; i = i.uncheckedInc()) {
             lagrange_poly_numbers[i] = i;
         }
-        // require(vk.num_inputs > 0); // TODO
+        require(vk.num_inputs > 0);
         
         PairingsBn254.Fr memory inputs_term = PairingsBn254.new_fr(0);
-        for(uint256 i =0; i < vk.num_inputs; i = i.uncheckedInc()) {
-            // TODO we may use batched lagrange compputation            
+        for(uint256 i =0; i < vk.num_inputs; i = i.uncheckedInc()) {         
             state.t = evaluate_lagrange_poly_out_of_domain(i, vk.domain_size, vk.omega, state.z);            
             state.t.mul_assign(PairingsBn254.new_fr(proof.input_values[i]));
             inputs_term.add_assign(state.t);
@@ -447,7 +446,7 @@ contract Plonk4VerifierWithAccessToDNext {
             if(i == 0){
                 t.mul_assign(one);
             }else{
-                t.mul_assign(vk.non_residues[i-1]); // TODO add one into non-residues during codegen?
+                t.mul_assign(vk.non_residues[i-1]);
             }
             t.mul_assign(state.beta);
             t.add_assign(state.gamma);
@@ -478,7 +477,6 @@ contract Plonk4VerifierWithAccessToDNext {
         result.point_sub_assign(scaled);
         
         // + L_0(z) * Z(x)
-        // TODO
         state.l_0_at_z = evaluate_lagrange_poly_out_of_domain(0, vk.domain_size, vk.omega, state.z);
         require(state.l_0_at_z.value != 0);
         factor = state.l_0_at_z.copy();
@@ -700,7 +698,6 @@ contract Plonk4VerifierWithAccessToDNext {
         // so we handle it in code generation step
         PairingsBn254.G2Point memory first_g2 = g2_elements[0];
         PairingsBn254.G2Point memory second_g2 = g2_elements[1];
-        PairingsBn254.G2Point memory gen2 = PairingsBn254.P2();
                 
         return PairingsBn254.pairingProd2(pair_with_generator, first_g2, pair_with_x, second_g2);
     }

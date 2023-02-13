@@ -12,7 +12,7 @@ struct VerificationKey {
     uint256 num_inputs;
     PairingsBn254.Fr omega;
     PairingsBn254.G1Point[2] gate_selectors_commitments;
-    PairingsBn254.G1Point[7] gate_setup_commitments;
+    PairingsBn254.G1Point[8] gate_setup_commitments;
     PairingsBn254.G1Point[STATE_WIDTH] permutation_commitments;
     PairingsBn254.G1Point lookup_selector_commitment;
     PairingsBn254.G1Point[4] lookup_tables_commitments;
@@ -41,7 +41,7 @@ contract Plonk4VerifierWithAccessToDNext {
         
         // openings
         PairingsBn254.Fr[STATE_WIDTH] state_polys_openings_at_z;
-        PairingsBn254.Fr[1] state_polys_openings_at_z_omega; // TODO: not use array while there is only D_next
+        PairingsBn254.Fr[1] state_polys_openings_at_z_omega;
         PairingsBn254.Fr[1] gate_selectors_openings_at_z;
         PairingsBn254.Fr[STATE_WIDTH-1] copy_permutation_polys_openings_at_z;
         PairingsBn254.Fr copy_permutation_grand_product_opening_at_z_omega;
@@ -217,7 +217,7 @@ contract Plonk4VerifierWithAccessToDNext {
         if(verify_quotient_evaluation(vk, proof, state)== false){
                 return false;
         }
-        require(proof.state_polys_openings_at_z_omega.length == 1); // TODO
+        require(proof.state_polys_openings_at_z_omega.length == 1);
 
         
         PairingsBn254.G1Point memory quotient_result =  proof.quotient_poly_parts_commitments[0].copy_g1();
@@ -292,11 +292,10 @@ contract Plonk4VerifierWithAccessToDNext {
         for (uint256 i = 0; i < lagrange_poly_numbers.length; i = i.uncheckedInc()) {
             lagrange_poly_numbers[i] = i;
         }
-        // require(vk.num_inputs > 0); // TODO
+        require(vk.num_inputs > 0);
         
         PairingsBn254.Fr memory inputs_term = PairingsBn254.new_fr(0);
-        for(uint256 i =0; i < vk.num_inputs; i = i.uncheckedInc()) {
-            // TODO we may use batched lagrange compputation            
+        for(uint256 i =0; i < vk.num_inputs; i = i.uncheckedInc()) {         
             state.t = evaluate_lagrange_poly_out_of_domain(i, vk.domain_size, vk.omega, state.z);            
             state.t.mul_assign(PairingsBn254.new_fr(proof.input_values[i]));
             inputs_term.add_assign(state.t);
@@ -398,10 +397,15 @@ contract Plonk4VerifierWithAccessToDNext {
         t.mul_assign(proof.state_polys_openings_at_z[1]);
         scaled = vk.gate_setup_commitments[4].point_mul(t);
         result.point_add_assign(scaled);
+        // Q_AC* A*C
+        t = proof.state_polys_openings_at_z[0].copy();
+        t.mul_assign(proof.state_polys_openings_at_z[2]);
+        scaled = vk.gate_setup_commitments[5].point_mul(t);
+        result.point_add_assign(scaled);
         // Q_const
-        result.point_add_assign(vk.gate_setup_commitments[5]);
+        result.point_add_assign(vk.gate_setup_commitments[6]);
         // Q_dNext * D_next
-        scaled = vk.gate_setup_commitments[6].point_mul(proof.state_polys_openings_at_z_omega[0]);
+        scaled = vk.gate_setup_commitments[7].point_mul(proof.state_polys_openings_at_z_omega[0]);
         result.point_add_assign(scaled);        
         result.point_mul_assign(proof.gate_selectors_openings_at_z[0]);        
 
@@ -416,7 +420,7 @@ contract Plonk4VerifierWithAccessToDNext {
             if(i == 0){
                 t.mul_assign(one);
             }else{
-                t.mul_assign(vk.non_residues[i-1]); // TODO add one into non-residues during codegen?
+                t.mul_assign(vk.non_residues[i-1]);
             }
             t.mul_assign(state.beta);
             t.add_assign(state.gamma);
@@ -447,7 +451,6 @@ contract Plonk4VerifierWithAccessToDNext {
         result.point_sub_assign(scaled);
         
         // + L_0(z) * Z(x)
-        // TODO
         state.l_0_at_z = evaluate_lagrange_poly_out_of_domain(0, vk.domain_size, vk.omega, state.z);
         require(state.l_0_at_z.value != 0);
         factor = state.l_0_at_z.copy();
@@ -659,7 +662,6 @@ contract Plonk4VerifierWithAccessToDNext {
         // so we handle it in code generation step
         PairingsBn254.G2Point memory first_g2 = g2_elements[0];
         PairingsBn254.G2Point memory second_g2 = g2_elements[1];
-        PairingsBn254.G2Point memory gen2 = PairingsBn254.P2();
                 
         return PairingsBn254.pairingProd2(pair_with_generator, first_g2, pair_with_x, second_g2);
     }
