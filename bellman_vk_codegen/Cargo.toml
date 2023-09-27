@@ -3,6 +3,7 @@ name = "bellman_vk_codegen"
 version = "0.1.0"
 authors = ["Alex Vlasov <alex.m.vlasov@gmail.com>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 bellman = { package = "bellman_ce", git = "https://github.com/matter-labs/bellman", branch = "plonk_release" }
