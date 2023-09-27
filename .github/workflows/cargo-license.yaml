@@ -6,4 +6,5 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: EmbarkStudios/cargo-deny-action@v1
-      working-directory: ./bellman_vk_codegen
+      with:
+        arguments: --manifest-path bellman_vk_codegen/Cargo.toml
