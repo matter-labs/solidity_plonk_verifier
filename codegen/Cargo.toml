@@ -14,8 +14,8 @@ serde_json = "*"
 # franklin_crypto = {package = "franklin-crypto", path = "../../../matter-labs/franklin-crypto"}
 # rescue_poseidon = {package = "rescue_poseidon", path = "../../../matter-labs/rescue-poseidon"}
 
-franklin-crypto = {features = ["plonk"], git = "https://github.com/matter-labs/franklin-crypto", branch = "dev"}
-rescue-poseidon = {package = "rescue_poseidon", git = "https://github.com/matter-labs/rescue-poseidon"}
+franklin-crypto = {features = ["plonk"], git = "https://github.com/matter-labs/franklin-crypto", branch = "snark_wrapper"}
+rescue-poseidon = {package = "rescue_poseidon", git = "https://github.com/matter-labs/rescue-poseidon", branch = "poseidon2"}
 
 hex = "*"   
 paste = "1.0"
