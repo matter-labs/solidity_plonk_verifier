@@ -1,6 +1,6 @@
-use codegen::{generate, Encoding};
 use std::path::PathBuf;
 use structopt::StructOpt;
+use zksync_solidity_vk_codegen::{generate, Encoding};
 
 const DEFAULT_OUTPUT_FILE: &str = "./hardhat/contracts";
 
